@@ -1,6 +1,6 @@
-# Guia de Implantação BipDesk na Oracle Cloud Free Tier
+# Guia de Implantação e Operação BipDesk Enterprise
 
-Este guia detalha o processo completo para provisionar a infraestrutura de sinalização e relay do BipDesk em uma instância gratuita da Oracle Cloud (1 GB de RAM), com suporte automático a HTTPS e custo zero.
+Este guia detalha o processo completo para provisionar e operar a infraestrutura de sinalização, relay e gestão do **BipDesk Enterprise** em uma instância gratuita da Oracle Cloud (1 GB de RAM), com suporte automático a HTTPS, custo zero e escalabilidade para centenas de técnicos e mais de 1.000 máquinas clientes.
 
 ---
 
@@ -46,7 +46,7 @@ ssh -i ssh-key-2026-10-15.key ubuntu@<SEU-IP-ORACLE>
 Clone ou transfira a pasta `deploy` para a VM e execute o bootstrap:
 ```bash
 cd /opt
-sudo git clone https://github.com/SEU-USUARIO/BipDesk.git
+sudo git clone https://github.com/DevMiguelOliveira/BipDesk.git
 cd BipDesk/deploy
 sudo chmod +x bootstrap.sh
 sudo ./bootstrap.sh
@@ -102,16 +102,46 @@ No seu repositório no GitHub: **Settings > Secrets and variables > Actions > Ne
 
 ## 6. Distribuição dos Binários para Clientes
 
-Quando os workflows do GitHub Actions compilarem `BipDesk_Session.exe` e `bipdesk-agent.exe`, envie esses dois arquivos para a pasta `/var/www/bipdesk-downloads/` na VM:
+Quando os workflows do GitHub Actions compilarem os executáveis, envie-os para a pasta `/var/www/bipdesk-downloads/` na VM:
 ```bash
-# Na sua máquina local:
-scp -i ssh-key-2026-10-15.key dist/session/BipDesk_Session.exe ubuntu@<IP>:/tmp/
-scp -i ssh-key-2026-10-15.key dist/agent/bipdesk-agent.exe ubuntu@<IP>:/tmp/
-
 # Na VM:
-sudo mv /tmp/BipDesk_Session.exe /var/www/bipdesk-downloads/
-sudo mv /tmp/bipdesk-agent.exe /var/www/bipdesk-downloads/
 sudo chmod 644 /var/www/bipdesk-downloads/*
 ```
 
 Agora, o comando de 1 linha de instalação do **BipDesk Host** estará 100% operacional para qualquer máquina cliente!
+
+---
+
+## 7. Atualização do Backend Enterprise na VM
+
+Para atualizar o container da API com o novo sistema multi-técnico, controle de concorrência e fila de comandos silenciosos:
+```bash
+cd /opt/BipDesk
+sudo git pull origin main
+cd deploy
+sudo docker compose up -d --build api
+```
+
+A API atualizará o banco de dados SQLite WAL automaticamente sem perder nenhuma máquina registrada.
+
+---
+
+## 8. Funcionalidades Enterprise no BipDesk Admin
+
+O aplicativo do técnico (`BipDesk_Tech.exe`) agora conta com:
+1. **Controle de Concorrência Multi-Técnico:**
+   - 🟢 **Disponível (Online)**
+   - 🟡 **Em Atendimento por [Nome do Técnico]**: Exibe o nome do técnico conectado e o tempo de sessão.
+   - Caso outro técnico tente conectar, o sistema pergunta se ele deseja assumir o controle ou aguardar.
+   - Quando o técnico fecha a janela, o lock é liberado automaticamente no servidor.
+2. **Barra Lateral de Empresas / Grupos:**
+   - Visualização por empresa com contadores automáticos de máquinas online/totais (`Online/Total`).
+3. **Modo Duplo de Visualização (Cards vs Tabela Densa):**
+   - **Cards:** Visual limpo com hover glow e métricas rápidas.
+   - **Tabela Densa Virtualizada:** Desenvolvida especificamente para 1.000+ máquinas com rolagem a 60 FPS e baixo consumo de memória.
+4. **Comandos Silenciosos Rápidos (Sem Interromper o Usuário):**
+   - 🔄 **Reiniciar Computador:** Dispara reboot com aviso automático no sistema.
+   - 🖨️ **Reiniciar Spooler de Impressão:** Resolve travamentos de impressora instantaneamente.
+   - 💬 **Mensagem na Tela:** Exibe caixa de diálogo ou aviso direto na tela do usuário remoto.
+5. **Linha do Tempo de Notas Técnicas Compartilhadas:**
+   - Histórico permanente com autor, data/hora e detalhes de manutenções realizadas em cada máquina cliente.
