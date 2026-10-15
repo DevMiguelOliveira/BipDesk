@@ -15,7 +15,7 @@ namespace BipDesk.Tech.Services
         public string Version { get; set; } = "1.0.0";
 
         [JsonPropertyName("download_url")]
-        public string DownloadUrl { get; set; } = "https://bipdesk.duckdns.org/downloads/BipDesk_Tech.exe";
+        public string DownloadUrl { get; set; } = "https://bipdesk.duckdns.org/downloads/BipDesk_Admin.exe";
 
         [JsonPropertyName("release_notes")]
         public string? ReleaseNotes { get; set; }
@@ -63,11 +63,11 @@ namespace BipDesk.Tech.Services
                 var currentExe = Process.GetCurrentProcess().MainModule?.FileName;
                 if (string.IsNullOrEmpty(currentExe) || !File.Exists(currentExe))
                 {
-                    currentExe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "BipDesk_Tech.exe");
+                    currentExe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "BipDesk_Admin.exe");
                 }
 
                 var tempDir = Path.GetTempPath();
-                var tempExe = Path.Combine(tempDir, $"BipDesk_Tech_New_{Guid.NewGuid():N}.exe");
+                var tempExe = Path.Combine(tempDir, $"BipDesk_Admin_New_{Guid.NewGuid():N}.exe");
                 var updaterBat = Path.Combine(tempDir, "bipdesk_update.bat");
 
                 using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(3) };

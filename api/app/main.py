@@ -478,7 +478,7 @@ def create_enroll_token(current_user: User = Depends(get_current_user), db: Sess
 def get_app_version():
     return {
         "version": "2.1.0",
-        "download_url": "https://bipdesk.duckdns.org/downloads/BipDesk_Tech.exe",
+        "download_url": "https://bipdesk.duckdns.org/downloads/BipDesk_Admin.exe",
         "release_notes": "Atualização com novo layout, suporte a 1.000+ máquinas, auto-download de motor e concorrência multi-técnico.",
         "published_at": datetime.utcnow().isoformat()
     }

@@ -5,7 +5,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
-    <AssemblyName>BipDesk_Tech</AssemblyName>
+    <AssemblyName>BipDesk_Admin</AssemblyName>
     <RootNamespace>BipDesk.Tech</RootNamespace>
     <ApplicationIcon>Resources\icon.ico</ApplicationIcon>
     <Company>BipDesk</Company>

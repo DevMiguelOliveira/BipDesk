@@ -128,7 +128,7 @@ A API atualizará o banco de dados SQLite WAL automaticamente sem perder nenhuma
 
 ## 8. Funcionalidades Enterprise no BipDesk Admin
 
-O aplicativo do técnico (`BipDesk_Tech.exe`) agora conta com:
+O aplicativo do técnico (`BipDesk_Admin.exe`) agora conta com:
 1. **Controle de Concorrência Multi-Técnico:**
    - 🟢 **Disponível (Online)**
    - 🟡 **Em Atendimento por [Nome do Técnico]**: Exibe o nome do técnico conectado e o tempo de sessão.
@@ -153,10 +153,10 @@ O aplicativo do técnico (`BipDesk_Tech.exe`) agora conta com:
 ### 9.1 Atualizações Automáticas do BipDesk Admin
 - Quando você alterar o layout ou adicionar recursos no painel do técnico, basta atualizar a versão no endpoint `/api/app/version` (ex: de `2.1.0` para `2.2.0`).
 - Ao abrir o app, todos os técnicos verão o aviso: **✨ Nova versão disponível! [Atualizar Agora]**.
-- Ao clicar no botão, o `BipDesk_Tech` baixa o novo executável em segundo plano, fecha o aplicativo antigo, substitui o `.exe` e reabre o app atualizado em 2 segundos, sem precisar baixar manualmente pelo navegador.
+- Ao clicar no botão, o `BipDesk_Admin` baixa o novo executável em segundo plano, fecha o aplicativo antigo, substitui o `.exe` e reabre o app atualizado em 2 segundos, sem precisar baixar manualmente pelo navegador.
 
 ### 9.2 Zero Configuração para Técnicos (Auto-Download do Motor de Sessão)
-- O `BipDesk_Tech.exe` detecta se o `BipDesk_Session.exe` já está no computador.
+- O `BipDesk_Admin.exe` detecta se o `BipDesk_Session.exe` já está no computador.
 - Se não estiver, ele faz o download automático silenciosamente para `%LocalAppData%\BipDesk\` no primeiro clique em "Conectar".
 - Além disso, o GitHub Actions agora gera automaticamente o artefato **`BipDesk_Admin_Completo_Zip`** que já vem com ambos os executáveis juntos na mesma pasta compactada.
 

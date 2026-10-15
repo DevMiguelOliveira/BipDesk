@@ -42,9 +42,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: BipDesk_Admin_Windows_x64
-          path: ./dist/admin/BipDesk_Tech.exe
+          path: ./dist/admin/BipDesk_Admin.exe
 
-      - name: Upload Full Bundle Artifact (Tech + Session)
+      - name: Upload Full Bundle Artifact (Admin + Session)
         uses: actions/upload-artifact@v4
         with:
           name: BipDesk_Admin_Completo_Zip
