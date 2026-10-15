@@ -1,5 +1,6 @@
 import os
 import secrets
+import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Request, Response
@@ -7,6 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from .database import engine, Base, get_db, auto_migrate
 from .models import User, Machine, EnrollToken, ConnectionAudit, RemoteCommand, MachineNote
@@ -16,11 +20,33 @@ from .security import (
     create_access_token, decode_access_token
 )
 
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("bipdesk.api")
+
+# Rate Limiter
+limiter = Limiter(key_func=get_remote_address)
+
+# Custom exception handler para rate limit
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    return Response(
+        content={"detail": "Muitas requisições. Tente novamente mais tarde."},
+        status_code=429,
+        headers={"Retry-After": str(exc.retry_after)}
+    )
+
 # Cria ou atualiza tabelas e colunas
 Base.metadata.create_all(bind=engine)
 auto_migrate(engine)
 
-app = FastAPI(title="BipDesk Enterprise API", version="2.0.0")
+app = FastAPI(title="BipDesk Enterprise API", version="2.1.1")
+
+# Adicionar state para limiter
+app.state.limiter = limiter
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,7 +61,18 @@ def startup_populate():
     db = next(get_db())
     admin = db.query(User).filter(User.username == "admin").first()
     if not admin:
-        default_pwd = os.getenv("ADMIN_DEFAULT_PASSWORD", "BipDesk@2026")
+        # NUNCA usar senha default hardcoded em produção
+        default_pwd = os.getenv("ADMIN_DEFAULT_PASSWORD")
+        if not default_pwd:
+            # Gerar senha aleatória se não fornecida
+            import string
+            default_pwd = ''.join(secrets.choice(string.ascii_letters + string.digits + "!@#$%&*") for _ in range(20))
+            logger.warning(
+                "ADMIN_DEFAULT_PASSWORD não configurado. Senha gerada automaticamente: %s. "
+                "Defina a variável de ambiente para usar uma senha específica.",
+                default_pwd
+            )
+        
         admin = User(
             username="admin",
             full_name="Administrador Principal",
@@ -44,7 +81,7 @@ def startup_populate():
         )
         db.add(admin)
         db.commit()
-        print(f"[BipDesk Enterprise] Super Admin criado: admin / {default_pwd}")
+        logger.info("[BipDesk Enterprise] Super Admin criado: admin")
     else:
         if not getattr(admin, "role", None) or admin.role != "admin":
             admin.role = "admin"
