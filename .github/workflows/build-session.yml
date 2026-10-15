@@ -17,9 +17,19 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/rustdesk/rustdesk/releases/download/1.4.9/rustdesk-1.4.9-x86_64.exe" -OutFile "rustdesk-raw.exe"
           mkdir -p dist/session
 
-      - name: Install Resource Hacker CLI
+      - name: Setup Resource Hacker CLI
         shell: pwsh
-        run: choco install -y resourcehacker
+        run: |
+          try {
+            choco install -y resourcehacker.portable
+          } catch {
+            Write-Host "Choco falhou, usando download direto..."
+          }
+          if (-not (Get-Command ResourceHacker -ErrorAction SilentlyContinue)) {
+            Invoke-WebRequest -Uri "https://www.angusj.com/resourcehacker/resource_hacker.zip" -OutFile "reshacker.zip"
+            Expand-Archive reshacker.zip -DestinationPath "$env:RUNNER_TEMP\reshacker"
+            echo "$env:RUNNER_TEMP\reshacker" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
 
       - name: Embed Custom BipDesk Icon and Branding
         shell: pwsh
@@ -27,8 +37,22 @@ jobs:
           $iconPath = (Resolve-Path "client/resources/icon.ico").Path
           Write-Host "Injetando ícone oficial do BipDesk: $iconPath"
           
-          # Injeta o ícone nas tabelas de recursos do executável
-          & "C:\Program Files (x86)\Resource Hacker\ResourceHacker.exe" -open rustdesk-raw.exe -save dist/session/BipDesk_Session.exe -action addoverwrite -res $iconPath -mask ICONGROUP,MAINICON,
+          # Tenta localizar o executável do Resource Hacker
+          $rh = (Get-Command ResourceHacker -ErrorAction SilentlyContinue)?.Source
+          if (-not $rh -and (Test-Path "$env:RUNNER_TEMP\reshacker\ResourceHacker.exe")) {
+            $rh = "$env:RUNNER_TEMP\reshacker\ResourceHacker.exe"
+          }
+          if (-not $rh) {
+            $rh = "C:\ProgramData\chocolatey\bin\ResourceHacker.exe"
+          }
+
+          if (Test-Path $rh) {
+            Write-Host "Executando Resource Hacker: $rh"
+            & $rh -open rustdesk-raw.exe -save dist/session/BipDesk_Session.exe -action addoverwrite -res $iconPath -mask ICONGROUP,MAINICON,
+          } else {
+            Write-Warning "Resource Hacker não localizado, copiando binário padrão..."
+            Copy-Item "rustdesk-raw.exe" "dist/session/BipDesk_Session.exe"
+          }
           
           if (-not (Test-Path "dist/session/BipDesk_Session.exe")) {
             Copy-Item "rustdesk-raw.exe" "dist/session/BipDesk_Session.exe"
