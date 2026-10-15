@@ -145,3 +145,21 @@ O aplicativo do técnico (`BipDesk_Tech.exe`) agora conta com:
    - 💬 **Mensagem na Tela:** Exibe caixa de diálogo ou aviso direto na tela do usuário remoto.
 5. **Linha do Tempo de Notas Técnicas Compartilhadas:**
    - Histórico permanente com autor, data/hora e detalhes de manutenções realizadas em cada máquina cliente.
+
+---
+
+## 9. Atualizações Automáticas (Auto-Update) e Distribuição
+
+### 9.1 Atualizações Automáticas do BipDesk Admin
+- Quando você alterar o layout ou adicionar recursos no painel do técnico, basta atualizar a versão no endpoint `/api/app/version` (ex: de `2.1.0` para `2.2.0`).
+- Ao abrir o app, todos os técnicos verão o aviso: **✨ Nova versão disponível! [Atualizar Agora]**.
+- Ao clicar no botão, o `BipDesk_Tech` baixa o novo executável em segundo plano, fecha o aplicativo antigo, substitui o `.exe` e reabre o app atualizado em 2 segundos, sem precisar baixar manualmente pelo navegador.
+
+### 9.2 Zero Configuração para Técnicos (Auto-Download do Motor de Sessão)
+- O `BipDesk_Tech.exe` detecta se o `BipDesk_Session.exe` já está no computador.
+- Se não estiver, ele faz o download automático silenciosamente para `%LocalAppData%\BipDesk\` no primeiro clique em "Conectar".
+- Além disso, o GitHub Actions agora gera automaticamente o artefato **`BipDesk_Admin_Completo_Zip`** que já vem com ambos os executáveis juntos na mesma pasta compactada.
+
+### 9.3 Ícone Oficial no BipDesk Host
+- O instalador em 1 linha (`install-host.ps1`) cria automaticamente atalhos oficiais na Área de Trabalho e no Menu Iniciar com o nome **BipDesk Host** e o ícone cibernético do BipDesk.
+- O agente em segundo plano (`bipdesk-agent.exe`) possui o recurso `RT_GROUP_ICON` compilado internamente, garantindo a exibição do logotipo oficial no Windows Explorer.
