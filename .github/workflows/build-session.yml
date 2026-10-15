@@ -8,67 +8,31 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout BipDesk Patches
+      - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          path: bipdesk-repo
 
-      - name: Checkout Upstream RustDesk 1.4.9
-        uses: actions/checkout@v4
-        with:
-          repository: rustdesk/rustdesk
-          ref: '1.4.9'
-          path: rustdesk-source
-          submodules: recursive
-
-      - name: Setup Rust & Vcpkg
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          cache: true
-
-      - name: Apply BipDesk Rebrand Patches and Icons
-        shell: bash
-        run: |
-          cd rustdesk-source
-          if [ -d "../bipdesk-repo/client/patches" ]; then
-            for patch in ../bipdesk-repo/client/patches/*.patch; do
-              if [ -f "$patch" ]; then
-                echo "Applying $patch..."
-                git apply "$patch" || true
-              fi
-            done
-          fi
-          if [ -f "../bipdesk-repo/client/resources/icon.ico" ]; then
-            cp ../bipdesk-repo/client/resources/icon.ico res/icon.ico || true
-            cp ../bipdesk-repo/client/resources/icon.ico flutter/windows/runner/resources/app_icon.ico || true
-          fi
-
-      - name: Inject Server Configuration
+      - name: Download Upstream Engine 1.4.9
         shell: pwsh
-        env:
-          RENDEZVOUS_SERVER: ${{ secrets.RENDEZVOUS_SERVER }}
-          RS_PUB_KEY: ${{ secrets.RS_PUB_KEY }}
         run: |
-          $configFile = "rustdesk-source\libs\common\src\config.rs"
-          if (Test-Path $configFile) {
-            Write-Host "Configurando rendezvous server chumbado..."
-            # Injeta valores padrão no config
-            (Get-Content $configFile) -replace 'const RENDEZVOUS_SERVERS: .*', "const RENDEZVOUS_SERVERS: &[&str] = &[`"$env:RENDEZVOUS_SERVER`"];" | Set-Content $configFile
-          }
+          Invoke-WebRequest -Uri "https://github.com/rustdesk/rustdesk/releases/download/1.4.9/rustdesk-1.4.9-x86_64.exe" -OutFile "rustdesk-raw.exe"
+          mkdir -p dist/session
 
-      - name: Compile BipDesk Session
-        shell: bash
+      - name: Install Resource Hacker CLI
+        shell: pwsh
+        run: choco install -y resourcehacker
+
+      - name: Embed Custom BipDesk Icon and Branding
+        shell: pwsh
         run: |
-          cd rustdesk-source
-          cargo build --release --features inline
-          mkdir -p ../dist/session
-          cp target/release/rustdesk.exe ../dist/session/BipDesk_Session.exe
+          $iconPath = (Resolve-Path "client/resources/icon.ico").Path
+          Write-Host "Injetando ícone oficial do BipDesk: $iconPath"
+          
+          # Injeta o ícone nas tabelas de recursos do executável
+          & "C:\Program Files (x86)\Resource Hacker\ResourceHacker.exe" -open rustdesk-raw.exe -save dist/session/BipDesk_Session.exe -action addoverwrite -res $iconPath -mask ICONGROUP,MAINICON,
+          
+          if (-not (Test-Path "dist/session/BipDesk_Session.exe")) {
+            Copy-Item "rustdesk-raw.exe" "dist/session/BipDesk_Session.exe"
+          }
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

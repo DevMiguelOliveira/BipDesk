@@ -43,7 +43,7 @@ namespace BipDesk.Tech.Services
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = exePath,
-                    Arguments = $"--connect {machine.RustdeskId} --password {password}",
+                    Arguments = $"--connect {machine.RustdeskId} --password {password} --server bipdesk.duckdns.org --key gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw=",
                     UseShellExecute = false,
                     CreateNoWindow = false
                 };
