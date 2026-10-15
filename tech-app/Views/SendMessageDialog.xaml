@@ -3,35 +3,37 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Enviar Mensagem na Tela - BipDesk"
         Icon="pack://application:,,,/Resources/icon.ico"
-        Height="280" Width="480"
+        Height="290" Width="500"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="{StaticResource BrushBgDark}"
         Foreground="{StaticResource BrushTextPrimary}">
 
-    <Grid Padding="24">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+    <Border Padding="24">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,14">
-            <TextBlock x:Name="TargetMachineText" Text="Enviar Mensagem para o Usuário" FontSize="15" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}"/>
-            <TextBlock Text="A mensagem será exibida imediatamente no centro da tela do usuário remoto." FontSize="11" Foreground="{StaticResource BrushTextSecondary}" Margin="0,3,0,0"/>
-        </StackPanel>
+            <!-- Header -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,14">
+                <TextBlock x:Name="TargetMachineText" Text="Enviar Mensagem para o Usuário" FontSize="15" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}"/>
+                <TextBlock Text="A mensagem será exibida imediatamente no centro da tela do usuário remoto." FontSize="11" Foreground="{StaticResource BrushTextSecondary}" Margin="0,3,0,0"/>
+            </StackPanel>
 
-        <!-- Input Box -->
-        <TextBox x:Name="MessageInput" Grid.Row="1" Style="{StaticResource SearchTextBoxStyle}" 
-                 AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                 Text="Aviso do Suporte Técnico: Favor salvar seus arquivos abertos, realizaremos manutenção em breve."
-                 Margin="0,0,0,16"/>
+            <!-- Input Box -->
+            <TextBox x:Name="MessageInput" Grid.Row="1" Style="{StaticResource SearchTextBoxStyle}" 
+                     AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                     Text="Aviso do Suporte Técnico: Favor salvar seus arquivos abertos, realizaremos manutenção em breve."
+                     Margin="0,0,0,16"/>
 
-        <!-- Actions -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="Cancelar" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" Click="Cancel_Click"/>
-            <Button Content="📨 Enviar Mensagem" Style="{StaticResource ConnectButtonStyle}" Click="Send_Click"/>
-        </StackPanel>
-    </Grid>
+            <!-- Actions -->
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Cancelar" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" Click="Cancel_Click"/>
+                <Button Content="📨 Enviar Mensagem" Style="{StaticResource ConnectButtonStyle}" Click="Send_Click"/>
+            </StackPanel>
+        </Grid>
+    </Border>
 </Window>
