@@ -127,6 +127,9 @@ func copyFile(src, dst string) error {
 
 func readIDFromConfig() string {
 	paths := []string{
+		filepath.Join(os.Getenv("APPDATA"), "RustDesk", "config", "RustDesk.toml"),
+		`C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk.toml`,
+		`C:\ProgramData\RustDesk\config\RustDesk.toml`,
 		filepath.Join(os.Getenv("APPDATA"), "BipDesk", "config", "BipDesk.toml"),
 		`C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\BipDesk\config\BipDesk.toml`,
 		`C:\ProgramData\BipDesk\config\BipDesk.toml`,
@@ -213,13 +216,24 @@ func runAutoSetup(serverURL string) (string, error) {
 
 	// 6. Obtém o ID da máquina
 	var machineID string
-	for i := 0; i < 5; i++ {
+	rustdeskInstalledExe := `C:\Program Files\RustDesk\RustDesk.exe`
+	for i := 0; i < 10; i++ {
 		out, err := exec.Command(sessionExe, "--get-id").Output()
 		if err == nil {
 			s := strings.TrimSpace(string(out))
 			if len(s) >= 6 {
 				machineID = s
 				break
+			}
+		}
+		if _, err := os.Stat(rustdeskInstalledExe); err == nil {
+			out2, err2 := exec.Command(rustdeskInstalledExe, "--get-id").Output()
+			if err2 == nil {
+				s := strings.TrimSpace(string(out2))
+				if len(s) >= 6 {
+					machineID = s
+					break
+				}
 			}
 		}
 		time.Sleep(1 * time.Second)

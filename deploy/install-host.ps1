@@ -76,11 +76,31 @@ for ($i = 0; $i -lt 5; $i++) {
 }
 
 if (-not $MachineId) {
-    # Fallback: tentar ler do arquivo de configuração
-    $ConfigPath = "$env:APPDATA\BipDesk\config\BipDesk.toml"
-    if (Test-Path $ConfigPath) {
-        $Match = Select-String -Path $ConfigPath -Pattern 'id = "([^"]+)"'
-        if ($Match) { $MachineId = $Match.Matches[0].Groups[1].Value }
+    $RustDeskInstalled = "C:\Program Files\RustDesk\RustDesk.exe"
+    if (Test-Path $RustDeskInstalled) {
+        $MachineId = (& $RustDeskInstalled --get-id)
+        if ($MachineId) { $MachineId = $MachineId.Trim() }
+    }
+}
+
+if (-not $MachineId) {
+    # Fallback: tentar ler do arquivo de configuração do RustDesk ou BipDesk
+    $ConfigPaths = @(
+        "$env:APPDATA\RustDesk\config\RustDesk.toml",
+        "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk.toml",
+        "$env:ProgramData\RustDesk\config\RustDesk.toml",
+        "$env:APPDATA\BipDesk\config\BipDesk.toml",
+        "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\BipDesk\config\BipDesk.toml",
+        "$env:ProgramData\BipDesk\config\BipDesk.toml"
+    )
+    foreach ($cfg in $ConfigPaths) {
+        if (Test-Path $cfg) {
+            $Match = Select-String -Path $cfg -Pattern 'id = "([^"]+)"'
+            if ($Match) { 
+                $MachineId = $Match.Matches[0].Groups[1].Value
+                break
+            }
+        }
     }
 }
 
