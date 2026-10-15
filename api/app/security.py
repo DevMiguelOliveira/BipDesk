@@ -7,9 +7,11 @@ import bcrypt
 from jose import jwt
 from cryptography.fernet import Fernet
 
-SECRET_KEY = os.getenv("SECRET_KEY", "bipdesk-super-secret-master-key-change-in-prod-123456789")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY environment variable must be set. Generate with: python -c 'import secrets; print(secrets.token_urlsafe(32))'")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 dias
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 horas - reduzido de 7 dias
 
 # Deriva chave Fernet consistente a partir da SECRET_KEY
 def get_cipher():

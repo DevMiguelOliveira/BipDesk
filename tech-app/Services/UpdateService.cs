@@ -23,8 +23,8 @@ namespace BipDesk.Tech.Services
 
     public class UpdateService
     {
-        public static readonly Version CurrentVersion = new Version(2, 0, 0);
-        public const string CurrentVersionString = "2.0.0";
+        public static readonly Version CurrentVersion = new Version(2, 1, 0);
+        public const string CurrentVersionString = "2.1.0";
 
         private readonly HttpClient _http;
         public string BaseUrl { get; set; } = "https://bipdesk.duckdns.org";

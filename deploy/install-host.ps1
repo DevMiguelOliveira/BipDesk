@@ -57,7 +57,11 @@ Write-Host "[3/5] Registrando serviço de sistema BipDesk..." -ForegroundColor G
 Start-Sleep -Seconds 2
 
 # Configurar Servidor BipDesk Cloud e Chave Criptográfica
-& $SessionExe --server "bipdesk.duckdns.org" --key "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw=" | Out-Null
+    $ServerKey = $env:BIPDESK_SERVER_KEY
+    if (-not $ServerKey) {
+        $ServerKey = "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw="
+    }
+    & $SessionExe --server "bipdesk.duckdns.org" --key $ServerKey | Out-Null
 Start-Sleep -Seconds 1
 
 # Definir a senha permanente silenciosamente

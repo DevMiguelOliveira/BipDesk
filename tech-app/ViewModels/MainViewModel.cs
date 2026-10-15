@@ -91,20 +91,28 @@ namespace BipDesk.Tech.ViewModels
             }
             else
             {
-                bool logged = await _api.LoginAsync("admin", "BipDesk@2026");
-                if (logged)
+                // Tenta login automático apenas se houver credenciais salvas
+                var savedUser = System.IO.File.ReadAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BipDesk", "credentials.txt"));
+                if (!string.IsNullOrEmpty(savedUser))
                 {
-                    ConnectionStatus = "Nuvem Conectada";
-                    ConnectionStatusColor = "#00E5A3";
-                    await LoadDataAsync();
-                    _pollTimer.Start();
-                    _ = CheckForUpdatesAsync(false);
+                    var parts = savedUser.Split('|');
+                    if (parts.Length == 2)
+                    {
+                        bool logged = await _api.LoginAsync(parts[0], parts[1]);
+                        if (logged)
+                        {
+                            ConnectionStatus = "Nuvem Conectada";
+                            ConnectionStatusColor = "#00E5A3";
+                            await LoadDataAsync();
+                            _pollTimer.Start();
+                            _ = CheckForUpdatesAsync(false);
+                            IsLoading = false;
+                            return;
+                        }
+                    }
                 }
-                else
-                {
-                    ConnectionStatus = "Falha na conexão com a nuvem";
-                    ConnectionStatusColor = "#F8514F";
-                }
+                ConnectionStatus = "Falha na conexão com a nuvem";
+                ConnectionStatusColor = "#F8514F";
             }
             IsLoading = false;
         }
