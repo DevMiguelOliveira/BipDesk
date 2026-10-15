@@ -1,4 +1,5 @@
 import os
+import re
 import secrets
 import logging
 from datetime import datetime, timedelta
@@ -435,8 +436,54 @@ def add_note(machine_id: int, req: MachineNoteCreateRequest, current_user: User 
     return note
 
 # ----------------- Rotas do Agent / Host -----------------
+def sanitize_rustdesk_id(raw_id: Optional[str]) -> str:
+    """
+    Sanitiza o rustdesk_id garantindo que apenas o identificador numérico/limpo seja aceito.
+    Filtra logs de console, mensagens de debug do Flutter/RustDesk e quebras de linha.
+    """
+    if not raw_id:
+        return ""
+    
+    lines = [line.strip() for line in raw_id.strip().splitlines() if line.strip()]
+    if not lines:
+        return ""
+        
+    # 1. Procura de baixo para cima linha contendo exclusivamente dígitos (6 a 16 dígitos)
+    for line in reversed(lines):
+        if re.fullmatch(r"\d{6,16}", line):
+            return line
+            
+    # 2. Procura padrão de dígitos isolados de baixo para cima
+    for line in reversed(lines):
+        match = re.search(r"\b(\d{6,16})\b", line)
+        if match:
+            return match.group(1)
+            
+    # 3. Fallback: linha curta alfanumérica limpa sem palavras de log
+    for line in reversed(lines):
+        lower = line.lower()
+        if not any(k in lower for k in ("skip", "version", "error", "warn", "rustdesk", ".dll")):
+            if re.fullmatch(r"[A-Za-z0-9_-]{6,32}", line):
+                return line
+                
+    # 4. Fallback final: limpa caracteres não-alfanuméricos
+    cleaned = re.sub(r"[^A-Za-z0-9_-]", "", raw_id)
+    return cleaned[:32]
+
 @app.post("/api/agent/enroll")
 def agent_enroll(req: EnrollRequest, request: Request, db: Session = Depends(get_db)):
+    clean_id = sanitize_rustdesk_id(req.rustdesk_id)
+    if not clean_id or len(clean_id) < 6:
+        raise HTTPException(status_code=400, detail="ID RustDesk inválido ou não detectado.")
+    req.rustdesk_id = clean_id
+
+    # Higieniza hostname se for multilinhas ou longo
+    if req.hostname:
+        h_lines = [l.strip() for l in req.hostname.strip().splitlines() if l.strip()]
+        req.hostname = h_lines[-1][:64] if h_lines else f"Host-{clean_id}"
+    else:
+        req.hostname = f"Host-{clean_id}"
+
     if req.token and req.token not in ["direct", "auto"]:
         token_entry = db.query(EnrollToken).filter(
             EnrollToken.token == req.token,
@@ -449,7 +496,13 @@ def agent_enroll(req: EnrollRequest, request: Request, db: Session = Depends(get
     
     client_ip = request.client.host if request.client else None
 
+    # Verifica se já existe por ID limpo ou legado corrompido que termina com esse ID
     machine = db.query(Machine).filter(Machine.rustdesk_id == req.rustdesk_id).first()
+    if not machine:
+        machine = db.query(Machine).filter(Machine.rustdesk_id.like(f"%{req.rustdesk_id}")).first()
+        if machine:
+            machine.rustdesk_id = req.rustdesk_id
+
     if not machine:
         machine = Machine(
             rustdesk_id=req.rustdesk_id,
@@ -466,6 +519,8 @@ def agent_enroll(req: EnrollRequest, request: Request, db: Session = Depends(get
         db.add(machine)
     else:
         machine.hostname = req.hostname
+        if not machine.alias or "skip" in machine.alias or len(machine.alias) > 64:
+            machine.alias = req.hostname
         if req.username: machine.logged_in_user = req.username
         if req.os_version: machine.os_version = req.os_version
         machine.ip_address = client_ip
@@ -477,7 +532,24 @@ def agent_enroll(req: EnrollRequest, request: Request, db: Session = Depends(get
 
 @app.post("/api/agent/heartbeat")
 def agent_heartbeat(req: HeartbeatRequest, request: Request, db: Session = Depends(get_db)):
+    clean_id = sanitize_rustdesk_id(req.rustdesk_id)
+    if not clean_id or len(clean_id) < 6:
+        raise HTTPException(status_code=400, detail="ID RustDesk inválido ou não detectado.")
+    req.rustdesk_id = clean_id
+
     machine = db.query(Machine).filter(Machine.rustdesk_id == req.rustdesk_id).first()
+    # Auto-healing: se não encontrou por ID limpo, verifica se há registro antigo com o ID no final
+    if not machine:
+        machine = db.query(Machine).filter(Machine.rustdesk_id.like(f"%{req.rustdesk_id}")).first()
+        if machine:
+            logger.info("Auto-reparando máquina %s para ID limpo %s", machine.id, req.rustdesk_id)
+            machine.rustdesk_id = req.rustdesk_id
+            if not machine.alias or "skip" in machine.alias or len(machine.alias) > 64:
+                machine.alias = f"Host-{req.rustdesk_id}"
+            if not machine.hostname or "skip" in machine.hostname or len(machine.hostname) > 64:
+                machine.hostname = f"Host-{req.rustdesk_id}"
+            db.commit()
+
     client_ip = req.ip_address or (request.client.host if request.client else None)
     
     if not machine:
@@ -485,10 +557,10 @@ def agent_heartbeat(req: HeartbeatRequest, request: Request, db: Session = Depen
         default_pwd = os.getenv("HOST_PASSWORD")
         if not default_pwd:
             default_pwd = secrets.token_urlsafe(12)
-            print(f"[BipDesk Enterprise] Senha do host gerada para {req.rustdesk_id}: {default_pwd}")
+            logger.info("[BipDesk Enterprise] Senha do host gerada para %s: %s", req.rustdesk_id, default_pwd)
         machine = Machine(
             rustdesk_id=req.rustdesk_id,
-            hostname=req.rustdesk_id,
+            hostname=f"Host-{req.rustdesk_id}",
             alias=f"Host-{req.rustdesk_id}",
             client_group="Geral",
             department="Geral",

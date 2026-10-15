@@ -67,13 +67,40 @@ Start-Sleep -Seconds 1
 # Definir a senha permanente silenciosamente
 & $SessionExe --password $Password | Out-Null
 
+function Get-CleanRustdeskId {
+    param([string]$RawText)
+    if (-not $RawText) { return "" }
+    $lines = ($RawText -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+    # 1. Procurar linha de baixo para cima com apenas dígitos (6 a 16 dígitos)
+    for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+        if ($lines[$i] -match '^\d{6,16}$') {
+            return $lines[$i]
+        }
+    }
+    # 2. Procurar padrão de dígitos isolados de baixo para cima
+    for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+        if ($lines[$i] -match '\b(\d{6,16})\b') {
+            return $matches[1]
+        }
+    }
+    # 3. Fallback: linha curta alfanumérica limpa
+    for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+        $candidate = $lines[$i]
+        if ($candidate -notmatch 'skip|version|error|warn|info|debug|rustdesk|flutter|\.dll' -and $candidate -match '^[a-zA-Z0-9_-]{6,32}$') {
+            return $candidate
+        }
+    }
+    return ""
+}
+
 # 5. Obter ID do BipDesk
 Write-Host "[4/5] Identificando ID da máquina..." -ForegroundColor Green
 $MachineId = ""
-for ($i = 0; $i -lt 5; $i++) {
-    $MachineId = (& $SessionExe --get-id)
-    if ($MachineId -and $MachineId.Trim().Length -ge 6) {
-        $MachineId = $MachineId.Trim()
+for ($i = 0; $i -lt 10; $i++) {
+    $rawOut = (& $SessionExe --get-id 2>&1 | Out-String)
+    $clean = Get-CleanRustdeskId -RawText $rawOut
+    if ($clean) {
+        $MachineId = $clean
         break
     }
     Start-Sleep -Seconds 2
@@ -82,8 +109,8 @@ for ($i = 0; $i -lt 5; $i++) {
 if (-not $MachineId) {
     $RustDeskInstalled = "C:\Program Files\RustDesk\RustDesk.exe"
     if (Test-Path $RustDeskInstalled) {
-        $MachineId = (& $RustDeskInstalled --get-id)
-        if ($MachineId) { $MachineId = $MachineId.Trim() }
+        $rawOut2 = (& $RustDeskInstalled --get-id 2>&1 | Out-String)
+        $MachineId = Get-CleanRustdeskId -RawText $rawOut2
     }
 }
 
@@ -99,10 +126,13 @@ if (-not $MachineId) {
     )
     foreach ($cfg in $ConfigPaths) {
         if (Test-Path $cfg) {
-            $Match = Select-String -Path $cfg -Pattern 'id = "([^"]+)"'
+            $Match = Select-String -Path $cfg -Pattern 'id\s*=\s*"([^"]+)"'
             if ($Match) { 
-                $MachineId = $Match.Matches[0].Groups[1].Value
-                break
+                $cleanFromCfg = Get-CleanRustdeskId -RawText $Match.Matches[0].Groups[1].Value
+                if ($cleanFromCfg) {
+                    $MachineId = $cleanFromCfg
+                    break
+                }
             }
         }
     }

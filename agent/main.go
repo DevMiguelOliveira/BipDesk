@@ -15,12 +15,68 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"syscall"
 	"time"
 	"unsafe"
 )
+
+var digitIdRegex = regexp.MustCompile(`\b\d{6,16}\b`)
+
+// extractCleanID extrai de forma robusta o ID numérico do RustDesk/BipDesk,
+// ignorando logs do Flutter, avisos do console e quebras de linha.
+func extractCleanID(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	lines := strings.Split(raw, "\n")
+	// 1. Procura de baixo para cima por uma linha que contenha apenas dígitos (6 a 16 dígitos)
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		line = strings.Trim(line, "\r")
+		if line == "" {
+			continue
+		}
+		isDigit := true
+		for _, r := range line {
+			if r < '0' || r > '9' {
+				isDigit = false
+				break
+			}
+		}
+		if isDigit && len(line) >= 6 && len(line) <= 16 {
+			return line
+		}
+	}
+
+	// 2. Procura de baixo para cima por padrão isolado de dígitos
+	for i := len(lines) - 1; i >= 0; i-- {
+		matches := digitIdRegex.FindAllString(lines[i], -1)
+		if len(matches) > 0 {
+			return matches[len(matches)-1]
+		}
+	}
+
+	// 3. Fallback: linha curta alfanumérica limpa sem mensagens de diagnóstico
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		line = strings.Trim(line, "\r")
+		lower := strings.ToLower(line)
+		if !strings.Contains(lower, "skip") &&
+			!strings.Contains(lower, "version") &&
+			!strings.Contains(lower, "error") &&
+			!strings.Contains(lower, "warn") &&
+			!strings.Contains(lower, "rustdesk") &&
+			!strings.Contains(lower, ".dll") &&
+			len(line) >= 6 && len(line) <= 32 {
+			return line
+		}
+	}
+
+	return ""
+}
 
 type HeartbeatPayload struct {
 	RustdeskID   string `json:"rustdesk_id"`
@@ -139,10 +195,13 @@ func readIDFromConfig() string {
 			lines := strings.Split(string(b), "\n")
 			for _, l := range lines {
 				l = strings.TrimSpace(l)
-				if strings.HasPrefix(l, "id =") {
+				if strings.HasPrefix(l, "id =") || strings.HasPrefix(l, "id=") {
 					parts := strings.Split(l, "\"")
 					if len(parts) >= 2 {
-						return parts[1]
+						clean := extractCleanID(parts[1])
+						if clean != "" {
+							return clean
+						}
 					}
 				}
 			}
@@ -222,20 +281,20 @@ func runAutoSetup(serverURL string) (string, error) {
 	var machineID string
 	rustdeskInstalledExe := `C:\Program Files\RustDesk\RustDesk.exe`
 	for i := 0; i < 10; i++ {
-		out, err := exec.Command(sessionExe, "--get-id").Output()
+		out, err := exec.Command(sessionExe, "--get-id").CombinedOutput()
 		if err == nil {
-			s := strings.TrimSpace(string(out))
-			if len(s) >= 6 {
-				machineID = s
+			clean := extractCleanID(string(out))
+			if clean != "" {
+				machineID = clean
 				break
 			}
 		}
 		if _, err := os.Stat(rustdeskInstalledExe); err == nil {
-			out2, err2 := exec.Command(rustdeskInstalledExe, "--get-id").Output()
+			out2, err2 := exec.Command(rustdeskInstalledExe, "--get-id").CombinedOutput()
 			if err2 == nil {
-				s := strings.TrimSpace(string(out2))
-				if len(s) >= 6 {
-					machineID = s
+				clean2 := extractCleanID(string(out2))
+				if clean2 != "" {
+					machineID = clean2
 					break
 				}
 			}
@@ -414,6 +473,13 @@ func main() {
 	clientID := flag.String("id", "", "ID local do BipDesk Session")
 	intervalSec := flag.Int("interval", 30, "Intervalo do heartbeat em segundos")
 	flag.Parse()
+
+	// Se foi passado --id na linha de comando, garante que apenas o ID limpo seja usado
+	if *clientID != "" {
+		if cleaned := extractCleanID(*clientID); cleaned != "" {
+			*clientID = cleaned
+		}
+	}
 
 	// Se não passou --id, significa que o usuário deu duplo-clique no executável diretamente
 	if *clientID == "" {
