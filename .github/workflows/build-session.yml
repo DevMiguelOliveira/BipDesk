@@ -32,7 +32,7 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Apply BipDesk Rebrand Patches
+      - name: Apply BipDesk Rebrand Patches and Icons
         shell: bash
         run: |
           cd rustdesk-source
@@ -43,6 +43,10 @@ jobs:
                 git apply "$patch" || true
               fi
             done
+          fi
+          if [ -f "../bipdesk-repo/client/resources/icon.ico" ]; then
+            cp ../bipdesk-repo/client/resources/icon.ico res/icon.ico || true
+            cp ../bipdesk-repo/client/resources/icon.ico flutter/windows/runner/resources/app_icon.ico || true
           fi
 
       - name: Inject Server Configuration

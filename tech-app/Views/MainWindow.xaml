@@ -4,6 +4,7 @@
         xmlns:vm="clr-namespace:BipDesk.Tech.ViewModels"
         xmlns:models="clr-namespace:BipDesk.Tech.Models"
         Title="BipDesk Admin - Central de Suporte Técnico"
+        Icon="pack://application:,,,/Resources/icon.ico"
         Height="780" Width="1240"
         MinHeight="600" MinWidth="900"
         WindowStartupLocation="CenterScreen"

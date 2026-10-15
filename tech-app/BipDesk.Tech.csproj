@@ -7,12 +7,13 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>BipDesk_Tech</AssemblyName>
     <RootNamespace>BipDesk.Tech</RootNamespace>
-    <ApplicationTitle>BipDesk Admin</ApplicationTitle>
+    <ApplicationIcon>Resources\icon.ico</ApplicationIcon>
     <Company>BipDesk</Company>
     <Product>BipDesk Remote Management</Product>
   </PropertyGroup>
 
   <ItemGroup>
+    <Resource Include="Resources\icon.ico" />
     <PackageReference Include="System.Net.Http.Json" Version="8.0.1" />
   </ItemGroup>
 

@@ -44,6 +44,9 @@ agent/*.exe
 # Node & Frontend (if any)
 node_modules/
 dist/
+BipDesk_Admin_Windows_x64/
+BipDesk_Host_Agent_Windows_x64/
+BipDesk_Session_Windows_x64/
 
 # Rust / Cargo
 target/

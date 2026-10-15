@@ -1,0 +1,40 @@
+{
+  "RT_ICON": {
+    "#1": {
+      "0000": [
+        "../icon.ico"
+      ]
+    }
+  },
+  "RT_MANIFEST": {
+    "#1": {
+      "0409": {
+        "identity": {
+          "name": "bipdesk-agent",
+          "version": "1.0.0.0"
+        },
+        "description": "BipDesk Host Remote Agent"
+      }
+    }
+  },
+  "RT_VERSION": {
+    "#1": {
+      "0409": {
+        "fixed": {
+          "file_version": "1.0.0.0",
+          "product_version": "1.0.0.0"
+        },
+        "info": {
+          "CompanyName": "BipDesk",
+          "FileDescription": "BipDesk Host Agent",
+          "FileVersion": "1.0.0.0",
+          "InternalName": "bipdesk-agent",
+          "LegalCopyright": "Copyright (c) 2026 BipDesk",
+          "OriginalFilename": "bipdesk-agent.exe",
+          "ProductName": "BipDesk Host",
+          "ProductVersion": "1.0.0.0"
+        }
+      }
+    }
+  }
+}
