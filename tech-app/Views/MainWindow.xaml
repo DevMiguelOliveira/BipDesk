@@ -178,8 +178,18 @@
                                             <TextBlock Text="{Binding StatusText}" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
                                         </StackPanel>
 
-                                        <TextBlock Text="⭐" FontSize="13" HorizontalAlignment="Right" Cursor="Hand" 
-                                                   Visibility="{Binding IsFavorite, Converter={x:Static ObjectConverters.Null}}"/>
+                                        <TextBlock Text="⭐" FontSize="13" HorizontalAlignment="Right" Cursor="Hand">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsFavorite}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                     </Grid>
 
                                     <!-- Middle: Names and Info -->

@@ -24,15 +24,7 @@ jobs:
         run: dotnet restore tech-app/BipDesk.Tech.csproj
 
       - name: Build and Publish Single-File Executable
-        run: |
-          dotnet publish tech-app/BipDesk.Tech.csproj `
-            -c Release `
-            -r win-x64 `
-            --self-contained true `
-            -p:PublishSingleFile=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true `
-            -p:EnableCompressionInSingleFile=true `
-            -o ./dist/admin
+        run: dotnet publish tech-app/BipDesk.Tech.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o ./dist/admin
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
