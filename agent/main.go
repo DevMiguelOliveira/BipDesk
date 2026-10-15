@@ -276,10 +276,37 @@ func runAutoSetup(serverURL string) (string, error) {
 	// 9. Cria atalho no Desktop com o ícone
 	createDesktopShortcut(sessionExe, iconFile)
 
-	// 10. Exibe mensagem de confirmação para o usuário
+	// 10. Limpa rastros e atalhos do RustDesk (White-Label BipDesk)
+	applyStealthWhiteLabel()
+
+	// 11. Exibe mensagem de confirmação para o usuário
 	showMessageBox("BipDesk Host Ativo", fmt.Sprintf("BipDesk Host instalado e configurado com sucesso!\n\nID desta Máquina: %s\n\nEsta máquina já está conectada e disponível no painel BipDesk Admin.", machineID), MB_ICONINFORMATION)
 
 	return machineID, nil
+}
+
+func applyStealthWhiteLabel() {
+	psScript := `
+		$scs = @(
+			"$env:PUBLIC\Desktop\RustDesk.lnk",
+			"$env:USERPROFILE\Desktop\RustDesk.lnk",
+			"$env:ProgramData\Microsoft\Windows\Start Menu\Programs\RustDesk.lnk",
+			"$env:ProgramData\Microsoft\Windows\Start Menu\Programs\RustDesk"
+		)
+		foreach ($s in $scs) { if (Test-Path $s) { Remove-Item -Path $s -Recurse -Force -ErrorAction SilentlyContinue } }
+
+		$unKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\RustDesk"
+		if (Test-Path $unKey) { Remove-Item -Path $unKey -Recurse -Force -ErrorAction SilentlyContinue }
+
+		try {
+			Set-Service -Name "RustDesk" -DisplayName "BipDesk Remote Management Service" -Description "Servico de gerenciamento corporativo BipDesk Enterprise" -ErrorAction SilentlyContinue
+		} catch {}
+
+		Stop-Process -Name "RustDesk" -Force -ErrorAction SilentlyContinue
+		Start-Sleep -Seconds 1
+		Start-Service -Name "RustDesk" -ErrorAction SilentlyContinue
+	`
+	exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command", psScript).Run()
 }
 
 func getLoggedInUser() string {

@@ -173,6 +173,35 @@ try {
     Write-Warning "Não foi possível criar atalhos: $_"
 }
 
+# 9. White-Label & Stealth: Ocultar e Limpar Rastros do RustDesk
+Write-Host ">> Aplicando modo corporativo silencioso (White-Label BipDesk)..." -ForegroundColor Green
+try {
+    # Remove atalhos padrão do RustDesk
+    $RustDeskShortcuts = @(
+        "$env:PUBLIC\Desktop\RustDesk.lnk",
+        "$env:USERPROFILE\Desktop\RustDesk.lnk",
+        "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\RustDesk.lnk",
+        "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\RustDesk"
+    )
+    foreach ($sc in $RustDeskShortcuts) {
+        if (Test-Path $sc) { Remove-Item -Path $sc -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # Remove do Painel de Controle (Adicionar ou Remover Programas)
+    $UninstallKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\RustDesk"
+    if (Test-Path $UninstallKey) {
+        Remove-Item -Path $UninstallKey -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # Renomeia o serviço do Windows para BipDesk
+    Set-Service -Name "RustDesk" -DisplayName "BipDesk Remote Management Service" -Description "Serviço de suporte e gerenciamento corporativo BipDesk Enterprise" -ErrorAction SilentlyContinue
+
+    # Fecha qualquer processo de janela do RustDesk e garante serviço em background
+    Stop-Process -Name "RustDesk" -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
+    Start-Service -Name "RustDesk" -ErrorAction SilentlyContinue
+} catch {}
+
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host "   BipDesk Host instalado e operacional com sucesso!       " -ForegroundColor Green
 Write-Host "   Acesso Não Assistido 24/7 Habilitado no Boot!          " -ForegroundColor Green
