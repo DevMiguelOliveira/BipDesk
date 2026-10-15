@@ -1,23 +1,62 @@
 import os
 import base64
 import hashlib
+import secrets
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional
 import bcrypt
 from jose import jwt
 from cryptography.fernet import Fernet
 
-SECRET_KEY = os.getenv("SECRET_KEY")
-if not SECRET_KEY:
-    raise RuntimeError("SECRET_KEY environment variable must be set. Generate with: python -c 'import secrets; print(secrets.token_urlsafe(32))'")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 horas - reduzido de 7 dias
+# Diretório para armazenar segredos
+SECRETS_DIR = Path(os.getenv("SECRETS_DIR", "/data/secrets"))
+SECRETS_DIR.mkdir(parents=True, exist_ok=True)
 
-# Deriva chave Fernet consistente a partir da SECRET_KEY
+# Caminhos para os arquivos de segredos
+SECRET_KEY_FILE = SECRETS_DIR / "secret_key.txt"
+FERNET_KEY_FILE = SECRETS_DIR / "fernet_key.txt"
+
+
+def get_or_create_secret_key() -> str:
+    """Carrega ou gera uma SECRET_KEY segura (32 bytes para HS256)"""
+    if SECRET_KEY_FILE.exists():
+        with open(SECRET_KEY_FILE, "r") as f:
+            return f.read().strip()
+
+    # Gerar nova chave (32 bytes = 256 bits para HS256)
+    key = secrets.token_urlsafe(32)
+    with open(SECRET_KEY_FILE, "w") as f:
+        f.write(key)
+    # Proteger arquivo (só leitura para owner)
+    os.chmod(SECRET_KEY_FILE, 0o600)
+    return key
+
+
+def get_or_create_fernet_key() -> bytes:
+    """Carrega ou gera uma chave Fernet segura (32 bytes para AES-256)"""
+    if FERNET_KEY_FILE.exists():
+        with open(FERNET_KEY_FILE, "rb") as f:
+            return f.read()
+
+    # Gerar nova chave Fernet (32 bytes)
+    key = Fernet.generate_key()
+    with open(FERNET_KEY_FILE, "wb") as f:
+        f.write(key)
+    os.chmod(FERNET_KEY_FILE, 0o600)
+    return key
+
+
+# Carregar chaves uma vez
+SECRET_KEY = get_or_create_secret_key()
+FERNET_KEY = get_or_create_fernet_key()
+
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 horas - reduzido de 7 dias para maior segurança
+
+# Usar chave Fernet direta (32 bytes já é o formato certo)
 def get_cipher():
-    key = hashlib.sha256(SECRET_KEY.encode()).digest()
-    fernet_key = base64.urlsafe_b64encode(key)
-    return Fernet(fernet_key)
+    return Fernet(FERNET_KEY)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
