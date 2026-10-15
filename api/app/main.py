@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from .database import engine, Base, get_db
+from .database import engine, Base, get_db, auto_migrate
 from .models import User, Machine, EnrollToken, ConnectionAudit, RemoteCommand, MachineNote
 from .security import (
     verify_password, get_password_hash,
@@ -16,8 +16,9 @@ from .security import (
     create_access_token, decode_access_token
 )
 
-# Cria ou atualiza tabelas
+# Cria ou atualiza tabelas e colunas
 Base.metadata.create_all(bind=engine)
+auto_migrate(engine)
 
 app = FastAPI(title="BipDesk Enterprise API", version="2.0.0")
 
@@ -44,6 +45,12 @@ def startup_populate():
         db.add(admin)
         db.commit()
         print(f"[BipDesk Enterprise] Super Admin criado: admin / {default_pwd}")
+    else:
+        if not getattr(admin, "role", None) or admin.role != "admin":
+            admin.role = "admin"
+        if not getattr(admin, "full_name", None):
+            admin.full_name = "Administrador Principal"
+        db.commit()
     db.close()
 
 # ----------------- Schemas -----------------
