@@ -1,0 +1,14 @@
+--- a/libs/common/src/config.rs
++++ b/libs/common/src/config.rs
+@@ -10,7 +10,7 @@ pub const APP_NAME: &str = "BipDesk";
+-pub const PROD_NAME: &str = "RustDesk";
++pub const PROD_NAME: &str = "BipDesk";
+-pub const DEFAULT_SERVICE_NAME: &str = "RustDesk";
++pub const DEFAULT_SERVICE_NAME: &str = "BipDesk";
+-pub const SCHEME: &str = "rustdesk";
++pub const SCHEME: &str = "bipdesk";
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -25,7 +25,7 @@ fn main() {
+-    let mutex_name = "RustDesk_Single_Instance_Mutex";
++    let mutex_name = "BipDesk_Single_Instance_Mutex";

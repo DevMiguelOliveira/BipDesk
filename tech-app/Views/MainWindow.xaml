@@ -1,0 +1,294 @@
+<Window x:Class="BipDesk.Tech.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:BipDesk.Tech.ViewModels"
+        xmlns:models="clr-namespace:BipDesk.Tech.Models"
+        Title="BipDesk Admin - Central de Suporte Técnico"
+        Height="780" Width="1240"
+        MinHeight="600" MinWidth="900"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BrushBgDark}"
+        Foreground="{StaticResource BrushTextPrimary}"
+        KeyDown="Window_KeyDown">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <!-- Topbar Header -->
+            <RowDefinition Height="64"/>
+            <!-- Filter Bar -->
+            <RowDefinition Height="48"/>
+            <!-- Main Content (Cards + Drawer) -->
+            <RowDefinition Height="*"/>
+            <!-- Active Sessions Dock -->
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- TOPBAR HEADER -->
+        <Border Grid.Row="0" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,0,0,1" Padding="20,0">
+            <Grid VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Brand Title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="BipDesk" FontSize="18" FontWeight="Bold" Foreground="{StaticResource BrushEmerald}"/>
+                    <TextBlock Text=" Admin" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}"/>
+                </StackPanel>
+
+                <!-- Cloud Status Pill -->
+                <Border Grid.Column="1" Margin="24,0,0,0" Background="#111620" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="12" Padding="10,4">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="8" Height="8" Margin="0,0,8,0">
+                            <Ellipse.Style>
+                                <Style TargetType="Ellipse">
+                                    <Setter Property="Fill" Value="{Binding ConnectionStatusColor}"/>
+                                </Style>
+                            </Ellipse.Style>
+                        </Ellipse>
+                        <TextBlock Text="{Binding ConnectionStatus}" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Search Bar -->
+                <Grid Grid.Column="2" MaxWidth="480" HorizontalAlignment="Right" Margin="0,0,20,0" Width="380">
+                    <TextBox x:Name="SearchBox" Style="{StaticResource SearchTextBoxStyle}" 
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             Padding="32,7,10,7"/>
+                    <TextBlock Text="🔍" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" 
+                               VerticalAlignment="Center" HorizontalAlignment="Left" Margin="10,0,0,0" IsHitTestVisible="False"/>
+                    <TextBlock Text="Pesquisar máquina... (Ctrl+K)" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" 
+                               VerticalAlignment="Center" HorizontalAlignment="Left" Margin="34,0,0,0" IsHitTestVisible="False">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+
+                <!-- Action Buttons -->
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="🔄 Atualizar" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" Command="{Binding RefreshCommand}"/>
+                    <Button Content="+ Nova Máquina (Host)" Style="{StaticResource ConnectButtonStyle}" Click="AddMachine_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- FILTER BAR -->
+        <Border Grid.Row="1" Background="{StaticResource BrushBgDark}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,0,0,1" Padding="20,0">
+            <Grid VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Todas as Máquinas" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" 
+                            Command="{Binding SetFilterCommand}" CommandParameter="Todas"/>
+                    <Button Content="🟢 Online" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" 
+                            Command="{Binding SetFilterCommand}" CommandParameter="Online"/>
+                    <Button Content="⭐ Favoritos" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" 
+                            Command="{Binding SetFilterCommand}" CommandParameter="Favoritos"/>
+                </StackPanel>
+
+                <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource BrushTextSecondary}">
+                    <Run Text="Total: "/>
+                    <Run Text="{Binding TotalCount, Mode=OneWay}" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}"/>
+                    <Run Text="  |  Online: "/>
+                    <Run Text="{Binding OnlineCount, Mode=OneWay}" FontWeight="Bold" Foreground="{StaticResource BrushEmerald}"/>
+                </TextBlock>
+            </Grid>
+        </Border>
+
+        <!-- MAIN CONTENT (CARDS + DRAWER) -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="340"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Grid de Máquinas (Cards) -->
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="16">
+                <ListBox ItemsSource="{Binding FilteredMachines}" 
+                         SelectedItem="{Binding SelectedMachine}"
+                         Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="Margin" Value="8"/>
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <ContentPresenter/>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type models:Machine}">
+                            <!-- MACHINE CARD -->
+                            <Border Width="270" Height="175" Background="{StaticResource BrushSurface}" 
+                                    BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" 
+                                    CornerRadius="10" Padding="14" MouseDown="Card_MouseDown">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource BrushSurfaceHover}"/>
+                                                <Setter Property="BorderBrush" Value="{StaticResource BrushEmerald}"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <!-- Top Row: Status + Favorite -->
+                                    <Grid Grid.Row="0">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Ellipse Width="8" Height="8" Margin="0,0,6,0">
+                                                <Ellipse.Style>
+                                                    <Style TargetType="Ellipse">
+                                                        <Setter Property="Fill">
+                                                            <Setter.Value>
+                                                                <SolidColorBrush Color="{Binding StatusColor}"/>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Style>
+                                                </Ellipse.Style>
+                                            </Ellipse>
+                                            <TextBlock Text="{Binding StatusText}" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
+                                        </StackPanel>
+
+                                        <TextBlock Text="⭐" FontSize="13" HorizontalAlignment="Right" Cursor="Hand" 
+                                                   Visibility="{Binding IsFavorite, Converter={x:Static ObjectConverters.Null}}"/>
+                                    </Grid>
+
+                                    <!-- Middle: Names and Info -->
+                                    <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="0,6">
+                                        <TextBlock Text="{Binding DisplayName}" FontSize="15" FontWeight="SemiBold" 
+                                                   Foreground="{StaticResource BrushTextPrimary}" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Hostname}" FontSize="11" Foreground="{StaticResource BrushTextSecondary}" 
+                                                   TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
+                                        <TextBlock Text="{Binding SubtitleText}" FontSize="11" Foreground="{StaticResource BrushBlue}" 
+                                                   TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/>
+                                    </StackPanel>
+
+                                    <!-- Bottom: Connect Button -->
+                                    <Button Grid.Row="2" Content="⚡ CONECTAR (Enter)" Style="{StaticResource ConnectButtonStyle}"
+                                            Command="{Binding DataContext.ConnectCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}" HorizontalAlignment="Stretch"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </ScrollViewer>
+
+            <!-- DRAWER LATERAL (DETALHES E NOTAS) -->
+            <Border Grid.Column="1" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1,0,0,0" Padding="18">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel DataContext="{Binding SelectedMachine}">
+                        <TextBlock Text="DETALHES DO CLIENTE" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,14"/>
+
+                        <!-- Nome em Destaque -->
+                        <TextBlock Text="{Binding DisplayName}" FontSize="18" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}"/>
+                        <TextBlock Text="{Binding Hostname}" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,2,0,12"/>
+
+                        <Separator Background="{StaticResource BrushBorder}" Margin="0,0,0,14"/>
+
+                        <!-- Metadados -->
+                        <Grid Margin="0,0,0,8">
+                            <TextBlock Text="Sistema Operacional:" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
+                            <TextBlock Text="{Binding OsVersion}" FontSize="11" Foreground="{StaticResource BrushTextPrimary}" HorizontalAlignment="Right"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <TextBlock Text="Usuário Logado:" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
+                            <TextBlock Text="{Binding LoggedInUser}" FontSize="11" Foreground="{StaticResource BrushTextPrimary}" HorizontalAlignment="Right"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <TextBlock Text="IP de Rede:" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
+                            <TextBlock Text="{Binding IpAddress}" FontSize="11" Foreground="{StaticResource BrushTextPrimary}" HorizontalAlignment="Right"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,16">
+                            <TextBlock Text="ID BipDesk:" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
+                            <TextBlock Text="{Binding RustdeskId}" FontSize="11" Foreground="{StaticResource BrushEmerald}" FontWeight="Bold" HorizontalAlignment="Right"/>
+                        </Grid>
+
+                        <Separator Background="{StaticResource BrushBorder}" Margin="0,0,0,14"/>
+
+                        <!-- Grupo / Empresa -->
+                        <TextBlock Text="Grupo / Empresa" FontSize="11" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding ClientGroup, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SearchTextBoxStyle}" Margin="0,0,0,12"/>
+
+                        <!-- Apelido Amigável -->
+                        <TextBlock Text="Apelido da Máquina" FontSize="11" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding Alias, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SearchTextBoxStyle}" Margin="0,0,0,12"/>
+
+                        <!-- Notas Privadas -->
+                        <TextBlock Text="Notas Privadas do Técnico" FontSize="11" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SearchTextBoxStyle}" 
+                                 Height="90" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Margin="0,0,0,12"/>
+
+                        <Button Content="💾 Salvar Alterações" Style="{StaticResource SecondaryButtonStyle}" 
+                                Command="{Binding DataContext.SaveNotesCommand, RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Right"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- SESSÕES ATIVAS DOCK (BARRA INFERIOR) -->
+        <Border Grid.Row="3" Background="#07090D" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,1,0,0" Padding="16,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="Sessões Abertas:" FontSize="12" FontWeight="SemiBold" 
+                           Foreground="{StaticResource BrushTextSecondary}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+
+                <ItemsControl Grid.Column="1" ItemsSource="{Binding ActiveSessions}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type models:ActiveSession}">
+                            <!-- SESSION CHIP -->
+                            <Border Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushEmerald}" 
+                                    BorderThickness="1" CornerRadius="14" Padding="10,4" Margin="0,0,8,0" Cursor="Hand">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Ellipse Width="6" Height="6" Fill="{StaticResource BrushEmerald}" Margin="0,0,6,0"/>
+                                    <TextBlock Text="{Binding Machine.DisplayName}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}" Margin="0,0,8,0"/>
+                                    <Button Content="✕" FontSize="10" Foreground="{StaticResource BrushRed}" Background="Transparent" BorderThickness="0" 
+                                            Command="{Binding DataContext.CloseSessionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}" Cursor="Hand"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

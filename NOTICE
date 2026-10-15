@@ -1,0 +1,22 @@
+BipDesk
+Copyright (c) 2026 BipDesk Contributors
+
+This product contains components derived from or based on open-source projects:
+
+1. RustDesk (https://github.com/rustdesk/rustdesk)
+   Copyright (c) 2020-present RustDesk Contributors
+   Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
+
+2. rustdesk-server (https://github.com/rustdesk/rustdesk-server)
+   Copyright (c) 2020-present RustDesk Contributors
+   Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
+
+Modifications made for BipDesk:
+- Rebranded user experience and native administrative console for support technicians.
+- Specialized unattended host service wrapper (BipDesk Host).
+- Direct inventory and telemetry integration via BipDesk Agent.
+- Zero-configuration embedded signaling parameters.
+
+Source code availability:
+In accordance with AGPL-3.0, the source code of BipDesk modifications is available
+in this repository.

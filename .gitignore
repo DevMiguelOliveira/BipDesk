@@ -1,0 +1,61 @@
+# Secrets & Keys (CRITICAL: Never commit keys or secrets)
+*.key
+*.key.pub
+*.pem
+*.pub
+id_ed25519*
+*.env
+*.env.*
+secrets/
+secrets.env
+
+# Database
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.pytest_cache/
+
+# .NET & WPF
+bin/
+obj/
+*.suo
+*.user
+*.userprefs
+*.vspscc
+.vs/
+*.nupkg
+TestResults/
+
+# Go
+agent/bin/
+agent/*.exe
+*.test
+
+# Node & Frontend (if any)
+node_modules/
+dist/
+
+# Rust / Cargo
+target/
+Cargo.lock
+
+# OS & Editors
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.bak

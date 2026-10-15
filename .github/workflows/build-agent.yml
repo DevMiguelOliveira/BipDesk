@@ -1,0 +1,36 @@
+name: Build BipDesk Host Agent
+
+on:
+  push:
+    paths:
+      - 'agent/**'
+      - '.github/workflows/build-agent.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go 1.24
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build Windows Binary
+        working-directory: ./agent
+        run: |
+          go mod tidy
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          go build -ldflags "-s -w -H=windowsgui" -o ../dist/agent/bipdesk-agent.exe main.go
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BipDesk_Host_Agent_Windows_x64
+          path: ./dist/agent/bipdesk-agent.exe

@@ -1,0 +1,45 @@
+{$DOMAIN:bipdesk.duckdns.org} {
+    # Cabeçalhos de Segurança Estritos
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Server "BipDesk-Edge"
+    }
+
+    # Distribuição dos Instaladores do BipDesk Host
+    handle /downloads/* {
+        root * /var/www/downloads
+        file_server browse
+    }
+
+    # API Backend (FastAPI)
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8080 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # Rota direta para script de instalação one-liner
+    handle /install/* {
+        reverse_proxy 127.0.0.1:8080 {
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    # Health check
+    handle /healthz {
+        reverse_proxy 127.0.0.1:8080
+    }
+
+    # Bloqueio padrão para rotas não mapeadas
+    handle {
+        respond "BipDesk Gateway Online" 200
+    }
+
+    # Compressão gzip/zstd
+    encode zstd gzip
+}

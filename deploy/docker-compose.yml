@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # Servidor de Sinalização e Registro de IDs (BipDesk Cloud)
+  hbbs:
+    image: rustdesk/rustdesk-server:1.1.16
+    container_name: bipdesk-hbbs
+    restart: unless-stopped
+    network_mode: host
+    command: hbbs -k _
+    volumes:
+      - /var/lib/bipdesk-server:/root
+    environment:
+      - ALWAYS_USE_RELAY=N
+    deploy:
+      resources:
+        limits:
+          memory: 80M
+
+  # Servidor de Relay para tráfego criptografado
+  hbbr:
+    image: rustdesk/rustdesk-server:1.1.16
+    container_name: bipdesk-hbbr
+    restart: unless-stopped
+    network_mode: host
+    command: hbbr -k _
+    volumes:
+      - /var/lib/bipdesk-server:/root
+    deploy:
+      resources:
+        limits:
+          memory: 80M
+
+  # API de Gerenciamento, Inventário e Heartbeat (FastAPI + SQLite WAL)
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    image: bipdesk-api:1.0.0
+    container_name: bipdesk-api
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /var/lib/bipdesk-api/data:/data
+      - /var/lib/bipdesk-server:/server-keys:ro
+      - /var/www/bipdesk-downloads:/downloads:ro
+    environment:
+      - DATABASE_URL=sqlite:////data/bipdesk.db
+      - SERVER_PUBKEY_PATH=/server-keys/id_ed25519.pub
+      - PORT=8080
+      - HOST=127.0.0.1
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  # Proxy Reverso Caddy com HTTPS Let's Encrypt automático
+  caddy:
+    image: caddy:2.10.2
+    container_name: bipdesk-caddy
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /var/lib/caddy/data:/data
+      - /var/lib/caddy/config:/config
+      - /var/www/bipdesk-downloads:/var/www/downloads:ro
+    deploy:
+      resources:
+        limits:
+          memory: 64M

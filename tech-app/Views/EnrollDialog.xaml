@@ -1,0 +1,62 @@
+<Window x:Class="BipDesk.Tech.Views.EnrollDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="BipDesk - Adicionar Nova Máquina (Host)"
+        Height="420" Width="580"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{StaticResource BrushBgDark}"
+        Foreground="{StaticResource BrushTextPrimary}">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Título e Instrução -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="Adicionar Nova Máquina Cliente" FontSize="18" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}"/>
+            <TextBlock Text="Instalação não assistida (Estilo TeamViewer Host). Cole o comando abaixo no PowerShell da máquina cliente." 
+                       FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- Caixa de Comando -->
+        <Border Grid.Row="1" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="8" Padding="14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <RowDefinition Width="*"/>
+                    <RowDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="TxtCommand" Grid.Column="0" IsReadOnly="True" 
+                         Background="Transparent" BorderThickness="0" Foreground="{StaticResource BrushEmerald}"
+                         FontFamily="Consolas" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                <Button Grid.Column="1" Content="📋 Copiar" Style="{StaticResource ConnectButtonStyle}" 
+                        Padding="12,6" Margin="10,0,0,0" Click="CopyButton_Click"/>
+            </Grid>
+        </Border>
+
+        <!-- Etapas explicativas -->
+        <StackPanel Grid.Row="2" Margin="0,18,0,0">
+            <TextBlock Text="1. Abra o PowerShell na máquina do cliente como Administrador." FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,2"/>
+            <TextBlock Text="2. Cole o comando e pressione Enter." FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,2"/>
+            <TextBlock Text="3. O BipDesk Host será instalado silenciosamente como serviço de sistema." FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,2"/>
+        </StackPanel>
+
+        <!-- Status de Espera em Tempo Real -->
+        <Border Grid.Row="3" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="⚡ Aguardando primeira conexão da máquina na nuvem..." 
+                           FontSize="12" Foreground="{StaticResource BrushBlue}" FontStyle="Italic"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Rodapé -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Fechar" Style="{StaticResource SecondaryButtonStyle}" Width="100" Click="CloseButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

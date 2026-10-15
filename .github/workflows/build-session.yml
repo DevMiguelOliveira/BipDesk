@@ -1,0 +1,73 @@
+name: Build BipDesk Session (RustDesk 1.4.9 Fork)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-session:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout BipDesk Patches
+        uses: actions/checkout@v4
+        with:
+          path: bipdesk-repo
+
+      - name: Checkout Upstream RustDesk 1.4.9
+        uses: actions/checkout@v4
+        with:
+          repository: rustdesk/rustdesk
+          ref: '1.4.9'
+          path: rustdesk-source
+          submodules: recursive
+
+      - name: Setup Rust & Vcpkg
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Apply BipDesk Rebrand Patches
+        shell: bash
+        run: |
+          cd rustdesk-source
+          if [ -d "../bipdesk-repo/client/patches" ]; then
+            for patch in ../bipdesk-repo/client/patches/*.patch; do
+              if [ -f "$patch" ]; then
+                echo "Applying $patch..."
+                git apply "$patch" || true
+              fi
+            done
+          fi
+
+      - name: Inject Server Configuration
+        shell: pwsh
+        env:
+          RENDEZVOUS_SERVER: ${{ secrets.RENDEZVOUS_SERVER }}
+          RS_PUB_KEY: ${{ secrets.RS_PUB_KEY }}
+        run: |
+          $configFile = "rustdesk-source\libs\common\src\config.rs"
+          if (Test-Path $configFile) {
+            Write-Host "Configurando rendezvous server chumbado..."
+            # Injeta valores padrão no config
+            (Get-Content $configFile) -replace 'const RENDEZVOUS_SERVERS: .*', "const RENDEZVOUS_SERVERS: &[&str] = &[`"$env:RENDEZVOUS_SERVER`"];" | Set-Content $configFile
+          }
+
+      - name: Compile BipDesk Session
+        shell: bash
+        run: |
+          cd rustdesk-source
+          cargo build --release --features inline
+          mkdir -p ../dist/session
+          cp target/release/rustdesk.exe ../dist/session/BipDesk_Session.exe
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BipDesk_Session_Windows_x64
+          path: ./dist/session/BipDesk_Session.exe
