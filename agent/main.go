@@ -78,7 +78,7 @@ func generateRandomPassword(length int) string {
 
 func createHTTPClient(timeout time.Duration) *http.Client {
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: false},
 	}
 	return &http.Client{
 		Timeout:   timeout,
@@ -207,7 +207,11 @@ func runAutoSetup(serverURL string) (string, error) {
 	_ = exec.Command(sessionExe, "--install-service").Run()
 	time.Sleep(1 * time.Second)
 
-	_ = exec.Command(sessionExe, "--server", "bipdesk.duckdns.org", "--key", "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw=").Run()
+	serverKey := os.Getenv("BIPDESK_SERVER_KEY")
+	if serverKey == "" {
+		serverKey = "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw="
+	}
+	_ = exec.Command(sessionExe, "--server", "bipdesk.duckdns.org", "--key", serverKey).Run()
 	time.Sleep(500 * time.Millisecond)
 
 	password := generateRandomPassword(20)
@@ -249,14 +253,14 @@ func runAutoSetup(serverURL string) (string, error) {
 
 	// 7. Registra na API (Enroll)
 	hostname, _ := os.Hostname()
-	enrollPayload := map[string]string{
-		"token":       "direct",
-		"rustdesk_id": machineID,
-		"hostname":    hostname,
-		"username":    getLoggedInUser(),
-		"os_version":  runtime.GOOS,
-		"password":    password,
-	}
+enrollPayload := map[string]string{
+        "token":       os.Getenv("BIPDESK_ENROLL_TOKEN"),
+        "rustdesk_id": machineID,
+        "hostname":    hostname,
+        "username":    getLoggedInUser(),
+        "os_version":  runtime.GOOS,
+        "password":    password,
+    }
 	enrollData, _ := json.Marshal(enrollPayload)
 	endpoint := fmt.Sprintf("%s/api/agent/enroll", strings.TrimRight(serverURL, "/"))
 	client := createHTTPClient(15 * time.Second)

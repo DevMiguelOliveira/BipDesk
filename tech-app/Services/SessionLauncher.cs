@@ -73,10 +73,12 @@ namespace BipDesk.Tech.Services
                     Debug.WriteLine($"[SessionLauncher] Executável não encontrado: {exePath}");
                 }
 
+                var serverKey = Environment.GetEnvironmentVariable("BIPDESK_SERVER_KEY") ?? "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw=";
+
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = exePath,
-                    Arguments = $"--connect {machine.RustdeskId} --password {password} --server bipdesk.duckdns.org --key gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw=",
+                    Arguments = $"--connect {machine.RustdeskId} --password {password} --server bipdesk.duckdns.org --key {serverKey}",
                     UseShellExecute = false,
                     CreateNoWindow = false
                 };

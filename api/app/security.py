@@ -23,7 +23,7 @@ def get_or_create_secret_key() -> str:
     if SECRET_KEY_FILE.exists():
         with open(SECRET_KEY_FILE, "r") as f:
             return f.read().strip()
-    
+
     # Gerar nova chave (32 bytes = 256 bits para HS256)
     key = secrets.token_urlsafe(32)
     with open(SECRET_KEY_FILE, "w") as f:
@@ -38,7 +38,7 @@ def get_or_create_fernet_key() -> bytes:
     if FERNET_KEY_FILE.exists():
         with open(FERNET_KEY_FILE, "rb") as f:
             return f.read()
-    
+
     # Gerar nova chave Fernet (32 bytes)
     key = Fernet.generate_key()
     with open(FERNET_KEY_FILE, "wb") as f:
@@ -52,7 +52,7 @@ SECRET_KEY = get_or_create_secret_key()
 FERNET_KEY = get_or_create_fernet_key()
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 dias
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 horas - reduzido de 7 dias para maior segurança
 
 # Usar chave Fernet direta (32 bytes já é o formato certo)
 def get_cipher():

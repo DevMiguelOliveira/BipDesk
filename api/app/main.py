@@ -62,17 +62,17 @@ def startup_populate():
     admin = db.query(User).filter(User.username == "admin").first()
     if not admin:
         # NUNCA usar senha default hardcoded em produção
-        default_pwd = os.getenv("ADMIN_DEFAULT_PASSWORD")
+        default_pwd = os.getenv("ADMIN_PASSWORD")
         if not default_pwd:
             # Gerar senha aleatória se não fornecida
             import string
             default_pwd = ''.join(secrets.choice(string.ascii_letters + string.digits + "!@#$%&*") for _ in range(20))
             logger.warning(
-                "ADMIN_DEFAULT_PASSWORD não configurado. Senha gerada automaticamente: %s. "
+                "ADMIN_PASSWORD não configurado. Senha gerada automaticamente: %s. "
                 "Defina a variável de ambiente para usar uma senha específica.",
                 default_pwd
             )
-        
+
         admin = User(
             username="admin",
             full_name="Administrador Principal",
@@ -287,22 +287,22 @@ def list_groups(current_user: User = Depends(get_current_user), db: Session = De
 
 @app.get("/api/machines", response_model=List[MachineResponse])
 def list_machines(group: Optional[str] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    now = datetime.utcnow()
     query = db.query(Machine)
     if group and group != "Todas":
         query = query.filter(Machine.client_group == group)
     
     machines = query.order_by(Machine.is_favorite.desc(), Machine.last_seen_at.desc()).all()
     result = []
+    now_utc = datetime.utcnow()
     for m in machines:
-        diff_seconds = (now - m.last_seen_at).total_seconds()
+        diff_seconds = (now_utc - m.last_seen_at).total_seconds()
         is_online = diff_seconds < 90
         
         # Concorrência: se sessão foi iniciada há mais de 2h, limpa
         is_busy = False
         busy_by = None
         if m.current_session_tech and m.session_started_at:
-            if (now - m.session_started_at).total_seconds() < 7200: # 2 horas
+            if (now_utc - m.session_started_at).total_seconds() < 7200: # 2 horas
                 is_busy = True
                 busy_by = m.current_session_tech
             else:
@@ -326,6 +326,7 @@ def list_machines(group: Optional[str] = None, current_user: User = Depends(get_
             ip_address=m.ip_address,
             last_seen_at=m.last_seen_at
         ))
+    # Commit once after processing all machines
     db.commit()
     return result
 
@@ -486,7 +487,10 @@ def agent_heartbeat(req: HeartbeatRequest, request: Request, db: Session = Depen
     
     if not machine:
         # Auto-registro em caso de primeiro contato via heartbeat
-        default_pwd = os.getenv("HOST_DEFAULT_PASSWORD", "bipdesk@host2026")
+        default_pwd = os.getenv("HOST_PASSWORD")
+        if not default_pwd:
+            default_pwd = secrets.token_urlsafe(12)
+            print(f"[BipDesk Enterprise] Senha do host gerada para {req.rustdesk_id}: {default_pwd}")
         machine = Machine(
             rustdesk_id=req.rustdesk_id,
             hostname=req.rustdesk_id,
