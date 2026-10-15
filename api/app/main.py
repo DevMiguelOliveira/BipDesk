@@ -485,13 +485,28 @@ def agent_heartbeat(req: HeartbeatRequest, request: Request, db: Session = Depen
 @app.get("/install/{token}")
 def serve_install_script(token: str, request: Request):
     base_url = f"{request.url.scheme}://{request.url.netloc}"
-    ps_script_path = os.path.join(os.path.dirname(__file__), "../../deploy/install-host.ps1")
-    if os.path.exists(ps_script_path):
-        with open(ps_script_path, "r", encoding="utf-8") as f:
-            content = f.read()
-    else:
-        content = "# BipDesk Install Script\n"
-    
+    possible_paths = [
+        os.path.join(os.path.dirname(__file__), "install-host.ps1"),
+        os.path.join(os.path.dirname(__file__), "../../deploy/install-host.ps1"),
+        "/opt/BipDesk/deploy/install-host.ps1",
+        "/deploy/install-host.ps1",
+        "/downloads/install-host.ps1",
+    ]
+    content = ""
+    for p in possible_paths:
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    c = f.read()
+                    if len(c) > 200:
+                        content = c
+                        break
+            except Exception:
+                pass
+
+    if not content:
+        raise HTTPException(status_code=500, detail="Script de instalação não localizado no servidor.")
+
     content = content.replace('param(', f'# Injetado automaticamente\n$ServerUrl = "{base_url}"\n$EnrollToken = "{token}"\nparam(')
     return Response(content=content, media_type="text/plain; charset=utf-8")
 

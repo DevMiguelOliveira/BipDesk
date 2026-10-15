@@ -21,7 +21,7 @@
         <!-- Título e Instrução -->
         <StackPanel Grid.Row="0" Margin="0,0,0,16">
             <TextBlock Text="Adicionar Nova Máquina Cliente" FontSize="18" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}"/>
-            <TextBlock Text="Instalação não assistida (Estilo TeamViewer Host). Cole o comando abaixo no PowerShell da máquina cliente." 
+            <TextBlock Text="Instalação não assistida (Estilo TeamViewer Host). Cole o comando abaixo no PowerShell ou CMD da máquina cliente." 
                        FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,4,0,0" TextWrapping="Wrap"/>
         </StackPanel>
 
@@ -42,7 +42,7 @@
 
         <!-- Etapas explicativas -->
         <StackPanel Grid.Row="2" Margin="0,18,0,0">
-            <TextBlock Text="1. Abra o PowerShell na máquina do cliente como Administrador." FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,2"/>
+            <TextBlock Text="1. Abra o PowerShell ou Prompt de Comando (CMD) como Administrador no cliente." FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,2"/>
             <TextBlock Text="2. Cole o comando e pressione Enter." FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,2"/>
             <TextBlock Text="3. O BipDesk Host será instalado silenciosamente como serviço de sistema." FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,2"/>
         </StackPanel>

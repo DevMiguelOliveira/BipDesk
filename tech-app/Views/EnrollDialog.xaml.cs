@@ -7,7 +7,7 @@ namespace BipDesk.Tech.Views
         public EnrollDialog(string serverUrl, string token)
         {
             InitializeComponent();
-            TxtCommand.Text = $"irm {serverUrl}/install/{token} | iex";
+            TxtCommand.Text = $"powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm {serverUrl}/install/{token} | iex\"";
         }
 
         private void CopyButton_Click(object sender, RoutedEventArgs e)
