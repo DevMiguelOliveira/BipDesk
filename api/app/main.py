@@ -106,7 +106,7 @@ class MachineUpdateRequest(BaseModel):
     department: Optional[str] = None
 
 class EnrollRequest(BaseModel):
-    token: str
+    token: Optional[str] = "direct"
     rustdesk_id: str
     hostname: str
     username: Optional[str] = None
@@ -386,13 +386,15 @@ def add_note(machine_id: int, req: MachineNoteCreateRequest, current_user: User 
 # ----------------- Rotas do Agent / Host -----------------
 @app.post("/api/agent/enroll")
 def agent_enroll(req: EnrollRequest, request: Request, db: Session = Depends(get_db)):
-    token_entry = db.query(EnrollToken).filter(
-        EnrollToken.token == req.token,
-        EnrollToken.is_used == False,
-        EnrollToken.expires_at > datetime.utcnow()
-    ).first()
-    if not token_entry:
-        raise HTTPException(status_code=400, detail="Token de instalação inválido ou expirado")
+    if req.token and req.token not in ["direct", "auto"]:
+        token_entry = db.query(EnrollToken).filter(
+            EnrollToken.token == req.token,
+            EnrollToken.is_used == False,
+            EnrollToken.expires_at > datetime.utcnow()
+        ).first()
+        if not token_entry:
+            raise HTTPException(status_code=400, detail="Token de instalação inválido ou expirado")
+        token_entry.is_used = True
     
     client_ip = request.client.host if request.client else None
 
@@ -402,6 +404,8 @@ def agent_enroll(req: EnrollRequest, request: Request, db: Session = Depends(get
             rustdesk_id=req.rustdesk_id,
             hostname=req.hostname,
             alias=req.hostname,
+            client_group="Geral",
+            department="Geral",
             logged_in_user=req.username,
             os_version=req.os_version,
             ip_address=client_ip,
@@ -411,26 +415,41 @@ def agent_enroll(req: EnrollRequest, request: Request, db: Session = Depends(get
         db.add(machine)
     else:
         machine.hostname = req.hostname
-        machine.logged_in_user = req.username
-        machine.os_version = req.os_version
+        if req.username: machine.logged_in_user = req.username
+        if req.os_version: machine.os_version = req.os_version
         machine.ip_address = client_ip
         machine.encrypted_password = encrypt_password(req.password)
         machine.last_seen_at = datetime.utcnow()
 
-    token_entry.is_used = True
     db.commit()
     return {"status": "enrolled", "machine_id": machine.id}
 
 @app.post("/api/agent/heartbeat")
 def agent_heartbeat(req: HeartbeatRequest, request: Request, db: Session = Depends(get_db)):
     machine = db.query(Machine).filter(Machine.rustdesk_id == req.rustdesk_id).first()
+    client_ip = req.ip_address or (request.client.host if request.client else None)
+    
     if not machine:
-        raise HTTPException(status_code=404, detail="Máquina não registrada")
+        # Auto-registro em caso de primeiro contato via heartbeat
+        default_pwd = os.getenv("HOST_DEFAULT_PASSWORD", "bipdesk@host2026")
+        machine = Machine(
+            rustdesk_id=req.rustdesk_id,
+            hostname=req.rustdesk_id,
+            alias=f"Host-{req.rustdesk_id}",
+            client_group="Geral",
+            department="Geral",
+            logged_in_user=req.logged_in_user,
+            ip_address=client_ip,
+            encrypted_password=encrypt_password(default_pwd),
+            last_seen_at=datetime.utcnow()
+        )
+        db.add(machine)
+        db.commit()
+        db.refresh(machine)
     
     machine.last_seen_at = datetime.utcnow()
     if req.logged_in_user: machine.logged_in_user = req.logged_in_user
-    if req.ip_address: machine.ip_address = req.ip_address
-    elif request.client: machine.ip_address = request.client.host
+    if client_ip: machine.ip_address = client_ip
 
     # Busca comandos pendentes para o agente executar
     pending_cmds = db.query(RemoteCommand).filter(
