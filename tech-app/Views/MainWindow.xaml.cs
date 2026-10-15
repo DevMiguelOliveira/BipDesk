@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using BipDesk.Tech.Models;
+using BipDesk.Tech.Services;
 using BipDesk.Tech.ViewModels;
 
 namespace BipDesk.Tech.Views
@@ -9,16 +10,41 @@ namespace BipDesk.Tech.Views
     {
         private readonly MainViewModel _vm;
 
-        public MainWindow()
+        public MainWindow() : this(new ApiClient())
+        {
+        }
+
+        public MainWindow(ApiClient api)
         {
             InitializeComponent();
-            _vm = new MainViewModel();
+            _vm = new MainViewModel(api);
             DataContext = _vm;
 
             Loaded += async (s, e) =>
             {
                 await _vm.InitializeAsync();
             };
+        }
+
+        private void ManageTechnicians_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new TechniciansDialog(_vm.Api)
+            {
+                Owner = this
+            };
+            dialog.ShowDialog();
+        }
+
+        private void Logout_Click(object sender, RoutedEventArgs e)
+        {
+            var res = MessageBox.Show("Deseja realmente encerrar a sessão e sair do BipDesk Admin?", "Sair do Sistema", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (res == MessageBoxResult.Yes)
+            {
+                _vm.Logout();
+                var login = new LoginWindow();
+                login.Show();
+                Close();
+            }
         }
 
         private void Window_KeyDown(object sender, KeyEventArgs e)

@@ -214,5 +214,24 @@ namespace BipDesk.Tech.Services
             }
             catch { return false; }
         }
+
+        public async Task<bool> DeleteTechnicianAsync(int techId)
+        {
+            try
+            {
+                var resp = await _http.DeleteAsync($"{BaseUrl}/api/technicians/{techId}");
+                return resp.IsSuccessStatusCode;
+            }
+            catch { return false; }
+        }
+
+        public void Logout()
+        {
+            _token = null;
+            _http.DefaultRequestHeaders.Authorization = null;
+            CurrentUsername = "";
+            CurrentFullName = null;
+            CurrentRole = "technician";
+        }
     }
 }

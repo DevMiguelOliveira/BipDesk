@@ -207,6 +207,17 @@ def change_password(req: ChangePasswordRequest, current_user: User = Depends(get
     db.commit()
     return {"status": "success", "message": "Senha alterada com sucesso"}
 
+@app.delete("/api/technicians/{tech_id}")
+def delete_technician(tech_id: int, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    if current_user.id == tech_id:
+        raise HTTPException(status_code=400, detail="Você não pode excluir sua própria conta de administrador")
+    tech = db.query(User).filter(User.id == tech_id).first()
+    if not tech:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    db.delete(tech)
+    db.commit()
+    return {"status": "deleted"}
+
 # ----------------- Gestão de Máquinas & Grupos -----------------
 @app.get("/api/groups", response_model=List[GroupSummaryResponse])
 def list_groups(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):

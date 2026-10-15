@@ -1,0 +1,68 @@
+<Window x:Class="BipDesk.Tech.Views.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="BipDesk Admin - Acesso de Técnicos &amp; Administrador"
+        Icon="pack://application:,,,/Resources/icon.ico"
+        Height="630" Width="440"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Background="{StaticResource BrushBgDark}"
+        Foreground="{StaticResource BrushTextPrimary}"
+        KeyDown="Window_KeyDown">
+
+    <Grid Margin="32,24,32,24">
+        <Grid.RowDefinitions>
+            <!-- Header Logo -->
+            <RowDefinition Height="Auto"/>
+            <!-- Form Card -->
+            <RowDefinition Height="*"/>
+            <!-- Footer Info -->
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- HEADER -->
+        <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,0,0,24">
+            <Image Source="pack://application:,,,/Resources/icon.ico" Width="56" Height="56" Margin="0,0,0,12" HorizontalAlignment="Center"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <TextBlock Text="BipDesk" FontSize="24" FontWeight="Bold" Foreground="{StaticResource BrushEmerald}"/>
+                <TextBlock Text=" Admin" FontSize="24" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}"/>
+            </StackPanel>
+            <TextBlock Text="Central Multi-Técnico &amp; Suporte Remoto" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,4,0,0" HorizontalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- FORM CARD -->
+        <Border Grid.Row="1" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="12" Padding="24,20" VerticalAlignment="Top">
+            <StackPanel>
+                <!-- Servidor -->
+                <TextBlock Text="Servidor BipDesk Cloud" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,5"/>
+                <TextBox x:Name="TxtServer" Style="{StaticResource SearchTextBoxStyle}" Text="https://bipdesk.duckdns.org" Margin="0,0,0,14"/>
+
+                <!-- Usuário -->
+                <TextBlock Text="Nome de Usuário" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,5"/>
+                <TextBox x:Name="TxtUsername" Style="{StaticResource SearchTextBoxStyle}" Text="admin" Margin="0,0,0,14"/>
+
+                <!-- Senha -->
+                <TextBlock Text="Senha de Acesso" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,5"/>
+                <PasswordBox x:Name="TxtPassword" Style="{StaticResource ModernPasswordBoxStyle}" Margin="0,0,0,14"/>
+
+                <!-- Lembrar meu usuário -->
+                <CheckBox x:Name="ChkRemember" Content="Lembrar meu usuário" Foreground="{StaticResource BrushTextSecondary}" FontSize="12" Margin="0,0,0,16" IsChecked="True"/>
+
+                <!-- Mensagem de Status / Erro -->
+                <TextBlock x:Name="TxtStatus" Text="" FontSize="12" Foreground="{StaticResource BrushRed}" TextWrapping="Wrap" Margin="0,0,0,12" Visibility="Collapsed" HorizontalAlignment="Center"/>
+
+                <!-- Botão de Login -->
+                <Button x:Name="BtnLogin" Content="Entrar no BipDesk Admin" Style="{StaticResource ConnectButtonStyle}" Height="40" FontSize="14" Click="BtnLogin_Click"/>
+            </StackPanel>
+        </Border>
+
+        <!-- FOOTER TIP -->
+        <Border Grid.Row="2" Margin="0,16,0,0" Background="#111622" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="8" Padding="14,10">
+            <StackPanel>
+                <TextBlock Text="💡 Acesso de Administrador Principal:" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushAmber}"/>
+                <TextBlock Text="Usuário: admin  |  Senha inicial: BipDesk@2026" FontSize="11" Foreground="{StaticResource BrushTextSecondary}" Margin="0,2,0,4"/>
+                <TextBlock Text="Administradores podem cadastrar novos técnicos dentro do painel em 'Equipe / Técnicos'." FontSize="10" Foreground="#6E7681" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

@@ -161,6 +161,31 @@
         </Setter>
     </Style>
 
+    <!-- Caixa de Senha Moderna -->
+    <Style x:Key="ModernPasswordBoxStyle" TargetType="PasswordBox">
+        <Setter Property="Background" Value="{StaticResource BrushSurface}"/>
+        <Setter Property="Foreground" Value="{StaticResource BrushTextPrimary}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BrushBorder}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Padding" Value="10,6"/>
+        <Setter Property="CaretBrush" Value="{StaticResource BrushEmerald}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="PasswordBox">
+                    <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsFocused" Value="True">
+                            <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource BrushEmerald}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Item de Lista de Grupos da Barra Lateral -->
     <Style x:Key="SidebarGroupItemStyle" TargetType="ListBoxItem">
         <Setter Property="Background" Value="Transparent"/>

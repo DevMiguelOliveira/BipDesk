@@ -44,9 +44,9 @@ namespace BipDesk.Tech.ViewModels
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        public MainViewModel()
+        public MainViewModel(ApiClient? api = null)
         {
-            _api = new ApiClient();
+            _api = api ?? new ApiClient();
             _launcher = new SessionLauncher();
             _updater = new UpdateService();
 
@@ -81,10 +81,9 @@ namespace BipDesk.Tech.ViewModels
         public async Task InitializeAsync()
         {
             IsLoading = true;
-            bool logged = await _api.LoginAsync("admin", "BipDesk@2026");
-            if (logged)
+            if (!string.IsNullOrWhiteSpace(_api.CurrentUsername) && (_api.CurrentUsername != "admin" || !string.IsNullOrWhiteSpace(_api.CurrentFullName)))
             {
-                ConnectionStatus = $"Nuvem Conectada • {_api.CurrentFullName ?? _api.CurrentUsername}";
+                ConnectionStatus = $"Nuvem Conectada • {_api.CurrentFullName ?? _api.CurrentUsername} ({CurrentRoleBadge})";
                 ConnectionStatusColor = "#00E5A3";
                 await LoadDataAsync();
                 _pollTimer.Start();
@@ -92,8 +91,20 @@ namespace BipDesk.Tech.ViewModels
             }
             else
             {
-                ConnectionStatus = "Falha na conexão com a nuvem";
-                ConnectionStatusColor = "#F8514F";
+                bool logged = await _api.LoginAsync("admin", "BipDesk@2026");
+                if (logged)
+                {
+                    ConnectionStatus = $"Nuvem Conectada • {_api.CurrentFullName ?? _api.CurrentUsername} ({CurrentRoleBadge})";
+                    ConnectionStatusColor = "#00E5A3";
+                    await LoadDataAsync();
+                    _pollTimer.Start();
+                    _ = CheckForUpdatesAsync(false);
+                }
+                else
+                {
+                    ConnectionStatus = "Falha na conexão com a nuvem";
+                    ConnectionStatusColor = "#F8514F";
+                }
             }
             IsLoading = false;
         }
@@ -110,7 +121,19 @@ namespace BipDesk.Tech.ViewModels
             set { _updateVersionText = value; OnPropertyChanged(); }
         }
 
+        public bool IsAdmin => _api.CurrentRole == "admin";
+        public string CurrentUsername => _api.CurrentUsername;
+        public string CurrentRoleBadge => _api.CurrentRole == "admin" ? "Administrador" : "Técnico";
+        public string CurrentRoleColor => _api.CurrentRole == "admin" ? "#F2CC60" : "#58A6FF";
+        public string CurrentRoleBg => _api.CurrentRole == "admin" ? "#332711" : "#121F33";
         public string CurrentTechnicianName => _api.CurrentFullName ?? _api.CurrentUsername;
+        public ApiClient Api => _api;
+
+        public void Logout()
+        {
+            _pollTimer.Stop();
+            _api.Logout();
+        }
 
         public bool IsGridView
         {

@@ -93,10 +93,60 @@
                     </TextBlock>
                 </Grid>
 
-                <!-- Action Buttons -->
+                <!-- Action Buttons & User Profile -->
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Gerenciar Equipe (Somente Administrador) -->
+                    <Button Content="👥 Equipe" Margin="0,0,10,0" Click="ManageTechnicians_Click" ToolTip="Gerenciar contas de técnicos e permissões">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsAdmin}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
                     <Button Content="🔄 Atualizar" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" Command="{Binding RefreshCommand}"/>
-                    <Button Content="+ Novo Host (Instalador)" Style="{StaticResource ConnectButtonStyle}" Click="AddMachine_Click"/>
+                    <Button Content="+ Novo Host" Style="{StaticResource ConnectButtonStyle}" Click="AddMachine_Click" ToolTip="Gerar comando de instalação de cliente"/>
+
+                    <!-- Perfil do Usuário Logado & Botão Sair -->
+                    <Border Margin="14,0,0,0" Background="#101522" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="16" Padding="10,4">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- Role Badge -->
+                            <Border CornerRadius="8" Padding="6,2" Margin="0,0,8,0">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="#1A2536"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsAdmin}" Value="True">
+                                                <Setter Property="Background" Value="#332711"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock Text="{Binding CurrentRoleBadge}" FontSize="10" FontWeight="Bold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{StaticResource BrushBlue}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsAdmin}" Value="True">
+                                                    <Setter Property="Foreground" Value="{StaticResource BrushAmber}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Border>
+
+                            <TextBlock Text="{Binding CurrentTechnicianName}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+
+                            <!-- Botão Sair -->
+                            <Button Content="🚪 Sair" Style="{StaticResource SecondaryButtonStyle}" Padding="6,2" FontSize="11" Click="Logout_Click" ToolTip="Encerrar sessão"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Grid>
         </Border>
