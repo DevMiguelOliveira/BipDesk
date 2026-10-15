@@ -9,7 +9,7 @@
     }
 
     # Distribuição dos Instaladores do BipDesk Host
-    handle /downloads/* {
+    handle_path /downloads/* {
         root * /var/www/downloads
         file_server browse
     }
