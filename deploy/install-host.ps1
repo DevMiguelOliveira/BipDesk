@@ -107,10 +107,30 @@ catch {
     Write-Warning "Falha ao registrar máquina na API: $_"
 }
 
-# 7. Iniciar Agent de Heartbeat
-Write-Host ">> Inicializando BipDesk Agent em segundo plano..." -ForegroundColor Green
-Start-Process -FilePath $AgentExe -ArgumentList "--server $ServerUrl --id $MachineId" -WindowStyle Hidden
+# 7. Configurar Agent para Iniciar Automaticamente com o Windows (24/7)
+Write-Host ">> Registrando BipDesk Agent para inicialização automática no boot..." -ForegroundColor Green
+$TaskName = "BipDeskHostAgent"
+
+try {
+    # Cria tarefa agendada no boot com privilégios SYSTEM
+    $Action = New-ScheduledTaskAction -Execute $AgentExe -Argument "--server `"$ServerUrl`" --id `"$MachineId`""
+    $Trigger = New-ScheduledTaskTrigger -AtStartup
+    $Principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+    
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Force | Out-Null
+    Start-ScheduledTask -TaskName $TaskName | Out-Null
+    Write-Host ">> BipDesk Agent registrado como tarefa de sistema (AtStartup)!" -ForegroundColor Cyan
+}
+catch {
+    # Fallback: Adicionar ao Run do HKLM se Scheduled Task falhar
+    Write-Warning "Agendador falhou, registrando no Registro do Windows (HKLM Run)..."
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "BipDeskAgent" -Value "`"$AgentExe`" --server `"$ServerUrl`" --id `"$MachineId`""
+    Start-Process -FilePath $AgentExe -ArgumentList "--server `"$ServerUrl`" --id `"$MachineId`"" -WindowStyle Hidden
+}
 
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host "   BipDesk Host instalado e operacional com sucesso!       " -ForegroundColor Green
+Write-Host "   Acesso Não Assistido 24/7 Habilitado no Boot!          " -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green
