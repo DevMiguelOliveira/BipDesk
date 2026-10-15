@@ -17,6 +17,7 @@ namespace BipDesk.Tech.ViewModels
     {
         private readonly ApiClient _api;
         private readonly SessionLauncher _launcher;
+        private readonly UpdateService _updater;
         private readonly DispatcherTimer _pollTimer;
 
         private List<Machine> _rawMachines = new();
@@ -32,6 +33,10 @@ namespace BipDesk.Tech.ViewModels
         private string _statusNotification = string.Empty;
         private bool _hasStatusNotification;
 
+        private bool _hasUpdateAvailable;
+        private string _updateVersionText = string.Empty;
+        private string _updateDownloadUrl = string.Empty;
+
         public ObservableCollection<Machine> FilteredMachines { get; } = new();
         public ObservableCollection<CompanyGroup> Groups { get; } = new();
         public ObservableCollection<MachineNote> CurrentMachineNotes { get; } = new();
@@ -43,6 +48,7 @@ namespace BipDesk.Tech.ViewModels
         {
             _api = new ApiClient();
             _launcher = new SessionLauncher();
+            _updater = new UpdateService();
 
             ConnectCommand = new RelayCommand(async p => await ConnectToMachineAsync(p as Machine));
             RefreshCommand = new RelayCommand(async _ => await LoadDataAsync());
@@ -61,6 +67,10 @@ namespace BipDesk.Tech.ViewModels
             // Notas Técnicas
             AddNoteCommand = new RelayCommand(async _ => await AddNoteAsync());
 
+            // Atualização Automática
+            ApplyUpdateCommand = new RelayCommand(async _ => await ApplyUpdateAsync());
+            CheckUpdateCommand = new RelayCommand(async _ => await CheckForUpdatesAsync(true));
+
             _pollTimer = new DispatcherTimer
             {
                 Interval = TimeSpan.FromSeconds(5)
@@ -78,6 +88,7 @@ namespace BipDesk.Tech.ViewModels
                 ConnectionStatusColor = "#00E5A3";
                 await LoadDataAsync();
                 _pollTimer.Start();
+                _ = CheckForUpdatesAsync(false);
             }
             else
             {
@@ -85,6 +96,18 @@ namespace BipDesk.Tech.ViewModels
                 ConnectionStatusColor = "#F8514F";
             }
             IsLoading = false;
+        }
+
+        public bool HasUpdateAvailable
+        {
+            get => _hasUpdateAvailable;
+            set { _hasUpdateAvailable = value; OnPropertyChanged(); }
+        }
+
+        public string UpdateVersionText
+        {
+            get => _updateVersionText;
+            set { _updateVersionText = value; OnPropertyChanged(); }
         }
 
         public string CurrentTechnicianName => _api.CurrentFullName ?? _api.CurrentUsername;
@@ -215,6 +238,8 @@ namespace BipDesk.Tech.ViewModels
         public ICommand SendMessageCommand { get; }
         public ICommand RestartSpoolerCommand { get; }
         public ICommand AddNoteCommand { get; }
+        public ICommand ApplyUpdateCommand { get; }
+        public ICommand CheckUpdateCommand { get; }
 
         public async Task LoadDataAsync()
         {
@@ -381,8 +406,8 @@ namespace BipDesk.Tech.ViewModels
                 }
             }
 
-            // 3. Inicia o BipDesk_Session nativo customizado
-            var proc = _launcher.LaunchSession(machine, ticket.Password, async session =>
+            // 3. Inicia o BipDesk_Session nativo customizado (baixa automaticamente se ainda não existir)
+            var proc = await _launcher.LaunchSessionAsync(machine, ticket.Password, async session =>
             {
                 Application.Current?.Dispatcher?.Invoke(() =>
                 {
@@ -391,7 +416,7 @@ namespace BipDesk.Tech.ViewModels
                 // Libera o lock da sessão no servidor
                 await _api.ReleaseSessionAsync(machine.Id);
                 await PollDataAsync();
-            });
+            }, msg => ShowNotification(msg));
 
             if (proc != null)
             {
@@ -544,6 +569,28 @@ namespace BipDesk.Tech.ViewModels
         public async Task<string?> GenerateEnrollTokenAsync()
         {
             return await _api.CreateEnrollTokenAsync();
+        }
+
+        public async Task CheckForUpdatesAsync(bool showNotificationIfUpToDate = false)
+        {
+            var info = await _updater.CheckForUpdateAsync();
+            if (info != null)
+            {
+                HasUpdateAvailable = true;
+                UpdateVersionText = $"Nova versão {info.Version} disponível!";
+                _updateDownloadUrl = info.DownloadUrl;
+            }
+            else if (showNotificationIfUpToDate)
+            {
+                ShowNotification("O BipDesk Admin já está na versão mais recente.");
+            }
+        }
+
+        public async Task ApplyUpdateAsync()
+        {
+            if (string.IsNullOrEmpty(_updateDownloadUrl)) return;
+            ShowNotification("Baixando atualização do BipDesk Admin...");
+            await _updater.DownloadAndApplyUpdateAsync(_updateDownloadUrl, msg => ShowNotification(msg));
         }
 
         private void ShowNotification(string message)

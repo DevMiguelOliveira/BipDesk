@@ -39,6 +39,7 @@ $WebClient = New-Object System.Net.WebClient
 try {
     $WebClient.DownloadFile("$ServerUrl/downloads/BipDesk_Session.exe", $SessionExe)
     $WebClient.DownloadFile("$ServerUrl/downloads/bipdesk-agent.exe", $AgentExe)
+    try { $WebClient.DownloadFile("$ServerUrl/downloads/icon.ico", "$InstallDir\icon.ico") } catch {}
 }
 catch {
     Write-Error "Falha ao baixar arquivos do servidor: $_"
@@ -123,11 +124,33 @@ try {
     Start-ScheduledTask -TaskName $TaskName | Out-Null
     Write-Host ">> BipDesk Agent registrado como tarefa de sistema (AtStartup)!" -ForegroundColor Cyan
 }
-catch {
-    # Fallback: Adicionar ao Run do HKLM se Scheduled Task falhar
-    Write-Warning "Agendador falhou, registrando no Registro do Windows (HKLM Run)..."
-    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "BipDeskAgent" -Value "`"$AgentExe`" --server `"$ServerUrl`" --id `"$MachineId`""
-    Start-Process -FilePath $AgentExe -ArgumentList "--server `"$ServerUrl`" --id `"$MachineId`"" -WindowStyle Hidden
+
+# 8. Criar Atalhos Oficiais na Área de Trabalho e Menu Iniciar com o Ícone BipDesk
+try {
+    $WshShell = New-Object -ComObject WScript.Shell
+    $IconPath = if (Test-Path "$InstallDir\icon.ico") { "$InstallDir\icon.ico,0" } else { "$SessionExe,0" }
+
+    # Atalho na Área de Trabalho (Pública para todos os usuários da máquina)
+    $DesktopPath = [Environment]::GetFolderPath("CommonDesktopDirectory")
+    if (-not (Test-Path $DesktopPath)) { $DesktopPath = "$env:PUBLIC\Desktop" }
+    $Shortcut = $WshShell.CreateShortcut("$DesktopPath\BipDesk Host.lnk")
+    $Shortcut.TargetPath = $SessionExe
+    $Shortcut.WorkingDirectory = $InstallDir
+    $Shortcut.IconLocation = $IconPath
+    $Shortcut.Description = "BipDesk Host - Suporte Remoto"
+    $Shortcut.Save()
+
+    # Atalho no Menu Iniciar
+    $StartMenuPath = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs"
+    $StartShortcut = $WshShell.CreateShortcut("$StartMenuPath\BipDesk Host.lnk")
+    $StartShortcut.TargetPath = $SessionExe
+    $StartShortcut.WorkingDirectory = $InstallDir
+    $StartShortcut.IconLocation = $IconPath
+    $StartShortcut.Description = "BipDesk Host - Suporte Remoto"
+    $StartShortcut.Save()
+    Write-Host ">> Atalhos com ícone oficial do BipDesk criados com sucesso!" -ForegroundColor Cyan
+} catch {
+    Write-Warning "Não foi possível criar atalhos: $_"
 }
 
 Write-Host "==========================================================" -ForegroundColor Green

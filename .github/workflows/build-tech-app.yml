@@ -26,8 +26,26 @@ jobs:
       - name: Build and Publish Single-File Executable
         run: dotnet publish tech-app/BipDesk.Tech.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o ./dist/admin
 
-      - name: Upload Artifact
+      - name: Package Admin Bundle (Com BipDesk_Session)
+        shell: pwsh
+        run: |
+          try {
+            Invoke-WebRequest -Uri "https://bipdesk.duckdns.org/downloads/BipDesk_Session.exe" -OutFile "./dist/admin/BipDesk_Session.exe" -TimeoutSec 15
+          } catch {
+            Write-Warning "Servidor offline durante empacotamento do bundle, incluindo apenas o executável..."
+          }
+          mkdir -p ./dist/bundle
+          Copy-Item ./dist/admin/* ./dist/bundle/ -Recurse -Force
+          Compress-Archive -Path ./dist/bundle/* -DestinationPath ./dist/BipDesk_Admin_Completo.zip -Force
+
+      - name: Upload Standalone Admin Artifact
         uses: actions/upload-artifact@v4
         with:
           name: BipDesk_Admin_Windows_x64
           path: ./dist/admin/BipDesk_Tech.exe
+
+      - name: Upload Full Bundle Artifact (Tech + Session)
+        uses: actions/upload-artifact@v4
+        with:
+          name: BipDesk_Admin_Completo_Zip
+          path: ./dist/BipDesk_Admin_Completo.zip

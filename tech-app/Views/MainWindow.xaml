@@ -42,13 +42,34 @@
                     <TextBlock Text=" Enterprise" FontSize="19" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}"/>
                 </StackPanel>
 
-                <!-- Cloud & Technician Status Pill -->
-                <Border Grid.Column="1" Margin="24,0,0,0" Background="#101520" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="14" Padding="12,5">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Ellipse Width="8" Height="8" Margin="0,0,8,0" Fill="{Binding ConnectionStatusColor}"/>
-                        <TextBlock Text="{Binding ConnectionStatus}" FontSize="12" FontWeight="Medium" Foreground="{StaticResource BrushTextSecondary}"/>
-                    </StackPanel>
-                </Border>
+                <!-- Cloud & Technician Status Pill + Update Pill -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Margin="24,0,0,0" Background="#101520" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="14" Padding="12,5">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse Width="8" Height="8" Margin="0,0,8,0" Fill="{Binding ConnectionStatusColor}"/>
+                            <TextBlock Text="{Binding ConnectionStatus}" FontSize="12" FontWeight="Medium" Foreground="{StaticResource BrushTextSecondary}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Auto-Update Pill -->
+                    <Border Margin="12,0,0,0" Background="{StaticResource BrushAmberBg}" BorderBrush="{StaticResource BrushAmber}" BorderThickness="1" CornerRadius="14" Padding="10,4">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasUpdateAvailable}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="✨ " FontSize="11" Foreground="{StaticResource BrushAmber}"/>
+                            <TextBlock Text="{Binding UpdateVersionText}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushAmber}" Margin="0,0,8,0"/>
+                            <Button Content="Atualizar Agora" Style="{StaticResource ConnectButtonStyle}" Padding="8,2" FontSize="10" Command="{Binding ApplyUpdateCommand}"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
 
                 <!-- Search Bar (Virtual search across 1000+ machines) -->
                 <Grid Grid.Column="2" MaxWidth="500" HorizontalAlignment="Right" Margin="0,0,24,0" Width="420">

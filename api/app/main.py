@@ -474,6 +474,15 @@ def create_enroll_token(current_user: User = Depends(get_current_user), db: Sess
     db.commit()
     return {"token": token_str, "expires_at": expires}
 
+@app.get("/api/app/version")
+def get_app_version():
+    return {
+        "version": "2.1.0",
+        "download_url": "https://bipdesk.duckdns.org/downloads/BipDesk_Tech.exe",
+        "release_notes": "Atualização com novo layout, suporte a 1.000+ máquinas, auto-download de motor e concorrência multi-técnico.",
+        "published_at": datetime.utcnow().isoformat()
+    }
+
 @app.get("/healthz")
 def healthz():
-    return {"status": "ok", "version": "2.0.0", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "ok", "version": "2.1.0", "timestamp": datetime.utcnow().isoformat()}

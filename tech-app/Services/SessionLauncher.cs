@@ -1,7 +1,9 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using BipDesk.Tech.Models;
 
 namespace BipDesk.Tech.Services
@@ -31,14 +33,45 @@ namespace BipDesk.Tech.Services
             var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BipDesk", "BipDesk_Session.exe");
             if (File.Exists(appDataPath)) return appDataPath;
 
-            return "BipDesk_Session.exe";
+            return localPath;
         }
 
-        public Process? LaunchSession(Machine machine, string password, Action<ActiveSession> onSessionTerminated)
+        public async Task<string> EnsureSessionExecutableAsync(Action<string>? statusCallback = null)
+        {
+            var existing = FindSessionExecutable();
+            if (File.Exists(existing)) return existing;
+
+            var targetDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BipDesk");
+            Directory.CreateDirectory(targetDir);
+            var targetPath = Path.Combine(targetDir, "BipDesk_Session.exe");
+
+            if (File.Exists(targetPath)) return targetPath;
+
+            try
+            {
+                statusCallback?.Invoke("Baixando motor de conexão BipDesk Session pela primeira vez...");
+                using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
+                var url = "https://bipdesk.duckdns.org/downloads/BipDesk_Session.exe";
+                var bytes = await client.GetByteArrayAsync(url);
+                await File.WriteAllBytesAsync(targetPath, bytes);
+                return targetPath;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SessionLauncher] Falha ao baixar BipDesk_Session automaticamente: {ex.Message}");
+                return existing;
+            }
+        }
+
+        public async Task<Process?> LaunchSessionAsync(Machine machine, string password, Action<ActiveSession> onSessionTerminated, Action<string>? statusCallback = null)
         {
             try
             {
-                var exePath = FindSessionExecutable();
+                var exePath = await EnsureSessionExecutableAsync(statusCallback);
+                if (!File.Exists(exePath))
+                {
+                    Debug.WriteLine($"[SessionLauncher] Executável não encontrado: {exePath}");
+                }
 
                 var startInfo = new ProcessStartInfo
                 {

@@ -70,6 +70,11 @@ mkdir -p /var/www/bipdesk-downloads
 chmod 700 /var/lib/bipdesk-server
 chmod 700 /var/lib/bipdesk-api
 
+if [ -f "$(dirname "$0")/icon.ico" ]; then
+    cp "$(dirname "$0")/icon.ico" /var/www/bipdesk-downloads/icon.ico
+    chmod 644 /var/www/bipdesk-downloads/icon.ico
+fi
+
 echo "=========================================================="
 echo ">> Bootstrap concluído com sucesso!"
 echo ">> Proximo passo: configurar o arquivo .env com seu DOMAIN"
