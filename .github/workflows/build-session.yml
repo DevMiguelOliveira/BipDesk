@@ -48,7 +48,8 @@ jobs:
 
           if (Test-Path $rh) {
             Write-Host "Executando Resource Hacker: $rh"
-            & $rh -open rustdesk-raw.exe -save dist/session/BipDesk_Session.exe -action addoverwrite -res $iconPath -mask ICONGROUP,MAINICON,
+            $rhArgs = @("-open", "rustdesk-raw.exe", "-save", "dist/session/BipDesk_Session.exe", "-action", "addoverwrite", "-res", "$iconPath", "-mask", "ICONGROUP,MAINICON,")
+            & $rh $rhArgs
           } else {
             Write-Warning "Resource Hacker não localizado, copiando binário padrão..."
             Copy-Item "rustdesk-raw.exe" "dist/session/BipDesk_Session.exe"
