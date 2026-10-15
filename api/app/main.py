@@ -6,19 +6,20 @@ from fastapi import FastAPI, Depends, HTTPException, status, Header, Request, Re
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from .database import engine, Base, get_db
-from .models import User, Machine, EnrollToken, ConnectionAudit
+from .models import User, Machine, EnrollToken, ConnectionAudit, RemoteCommand, MachineNote
 from .security import (
     verify_password, get_password_hash,
     encrypt_password, decrypt_password,
     create_access_token, decode_access_token
 )
 
-# Cria tabelas automaticamente
+# Cria ou atualiza tabelas
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="BipDesk API", version="1.0.0")
+app = FastAPI(title="BipDesk Enterprise API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,7 +29,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Cria usuário admin padrão se banco estiver vazio
 @app.on_event("startup")
 def startup_populate():
     db = next(get_db())
@@ -37,11 +37,13 @@ def startup_populate():
         default_pwd = os.getenv("ADMIN_DEFAULT_PASSWORD", "BipDesk@2026")
         admin = User(
             username="admin",
+            full_name="Administrador Principal",
+            role="admin",
             password_hash=get_password_hash(default_pwd)
         )
         db.add(admin)
         db.commit()
-        print(f"[BipDesk] Usuário admin criado com senha inicial: {default_pwd}")
+        print(f"[BipDesk Enterprise] Super Admin criado: admin / {default_pwd}")
     db.close()
 
 # ----------------- Schemas -----------------
@@ -52,6 +54,27 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    username: str
+    full_name: Optional[str]
+    role: str
+
+class TechnicianCreateRequest(BaseModel):
+    username: str
+    password: str
+    full_name: str
+    role: str = "technician"
+
+class TechnicianResponse(BaseModel):
+    id: int
+    username: str
+    full_name: Optional[str]
+    role: str
+    is_active: bool
+    created_at: datetime
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
 
 class MachineResponse(BaseModel):
     id: int
@@ -59,19 +82,28 @@ class MachineResponse(BaseModel):
     hostname: str
     alias: Optional[str]
     client_group: str
+    department: str
     notes: Optional[str]
     is_favorite: bool
     is_online: bool
+    is_busy: bool
+    busy_by: Optional[str]
     logged_in_user: Optional[str]
     os_version: Optional[str]
     ip_address: Optional[str]
     last_seen_at: datetime
+
+class GroupSummaryResponse(BaseModel):
+    name: str
+    total_machines: int
+    online_machines: int
 
 class MachineUpdateRequest(BaseModel):
     alias: Optional[str] = None
     notes: Optional[str] = None
     is_favorite: Optional[bool] = None
     client_group: Optional[str] = None
+    department: Optional[str] = None
 
 class EnrollRequest(BaseModel):
     token: str
@@ -90,51 +122,156 @@ class ConnectResponse(BaseModel):
     rustdesk_id: str
     password: str
     expires_in_seconds: int = 60
+    is_busy: bool = False
+    busy_by: Optional[str] = None
 
-# ----------------- Dependency -----------------
-def get_current_user(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
+class RemoteCommandRequest(BaseModel):
+    command_type: str # "reboot", "message", "restart_spooler"
+    payload: Optional[str] = None
+
+class RemoteCommandResponse(BaseModel):
+    id: int
+    command_type: str
+    payload: Optional[str]
+    status: str
+    created_by: str
+    created_at: datetime
+
+class MachineNoteCreateRequest(BaseModel):
+    content: str
+
+class MachineNoteResponse(BaseModel):
+    id: int
+    author_username: str
+    content: str
+    created_at: datetime
+
+# ----------------- Dependencies -----------------
+def get_current_user(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)) -> User:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Token ausente ou inválido")
     token = authorization.split(" ")[1]
     payload = decode_access_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Token expirado ou inválido")
-    user = db.query(User).filter(User.username == payload.get("sub")).first()
+    user = db.query(User).filter(User.username == payload.get("sub"), User.is_active == True).first()
     if not user:
-        raise HTTPException(status_code=401, detail="Usuário não encontrado")
+        raise HTTPException(status_code=401, detail="Usuário não encontrado ou inativo")
     return user
 
-# ----------------- Rotas do Técnico -----------------
+def require_admin(current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Permissão restrita para administradores")
+    return current_user
+
+# ----------------- Autenticação e Técnicos -----------------
 @app.post("/api/login", response_model=LoginResponse)
 def login(req: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == req.username).first()
-    if not user or not verify_password(req.password, user.password_hash):
+    if not user or not user.is_active or not verify_password(req.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Usuário ou senha incorretos")
-    token = create_access_token({"sub": user.username})
-    return {"access_token": token, "token_type": "bearer"}
+    token = create_access_token({"sub": user.username, "role": user.role})
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "username": user.username,
+        "full_name": user.full_name,
+        "role": user.role
+    }
+
+@app.get("/api/technicians", response_model=List[TechnicianResponse])
+def list_technicians(current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    return db.query(User).all()
+
+@app.post("/api/technicians", response_model=TechnicianResponse)
+def create_technician(req: TechnicianCreateRequest, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    existing = db.query(User).filter(User.username == req.username).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Nome de usuário já existe")
+    user = User(
+        username=req.username,
+        full_name=req.full_name,
+        role=req.role,
+        password_hash=get_password_hash(req.password)
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+@app.post("/api/technicians/change-password")
+def change_password(req: ChangePasswordRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not verify_password(req.old_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Senha atual incorreta")
+    current_user.password_hash = get_password_hash(req.new_password)
+    db.commit()
+    return {"status": "success", "message": "Senha alterada com sucesso"}
+
+# ----------------- Gestão de Máquinas & Grupos -----------------
+@app.get("/api/groups", response_model=List[GroupSummaryResponse])
+def list_groups(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    now = datetime.utcnow()
+    machines = db.query(Machine).all()
+    grouped = {}
+    for m in machines:
+        grp = m.client_group or "Geral"
+        if grp not in grouped:
+            grouped[grp] = {"total": 0, "online": 0}
+        grouped[grp]["total"] += 1
+        if (now - m.last_seen_at).total_seconds() < 90:
+            grouped[grp]["online"] += 1
+
+    return [
+        GroupSummaryResponse(
+            name=name,
+            total_machines=data["total"],
+            online_machines=data["online"]
+        )
+        for name, data in sorted(grouped.items())
+    ]
 
 @app.get("/api/machines", response_model=List[MachineResponse])
-def list_machines(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_machines(group: Optional[str] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     now = datetime.utcnow()
-    machines = db.query(Machine).order_by(Machine.is_favorite.desc(), Machine.last_seen_at.desc()).all()
+    query = db.query(Machine)
+    if group and group != "Todas":
+        query = query.filter(Machine.client_group == group)
+    
+    machines = query.order_by(Machine.is_favorite.desc(), Machine.last_seen_at.desc()).all()
     result = []
     for m in machines:
         diff_seconds = (now - m.last_seen_at).total_seconds()
         is_online = diff_seconds < 90
+        
+        # Concorrência: se sessão foi iniciada há mais de 2h, limpa
+        is_busy = False
+        busy_by = None
+        if m.current_session_tech and m.session_started_at:
+            if (now - m.session_started_at).total_seconds() < 7200: # 2 horas
+                is_busy = True
+                busy_by = m.current_session_tech
+            else:
+                m.current_session_tech = None
+                m.session_started_at = None
+
         result.append(MachineResponse(
             id=m.id,
             rustdesk_id=m.rustdesk_id,
             hostname=m.hostname,
             alias=m.alias,
-            client_group=m.client_group,
+            client_group=m.client_group or "Geral",
+            department=m.department or "Geral",
             notes=m.notes,
             is_favorite=m.is_favorite,
             is_online=is_online,
+            is_busy=is_busy,
+            busy_by=busy_by,
             logged_in_user=m.logged_in_user,
             os_version=m.os_version,
             ip_address=m.ip_address,
             last_seen_at=m.last_seen_at
         ))
+    db.commit()
     return result
 
 @app.patch("/api/machines/{machine_id}")
@@ -142,19 +279,16 @@ def update_machine(machine_id: int, req: MachineUpdateRequest, current_user: Use
     machine = db.query(Machine).filter(Machine.id == machine_id).first()
     if not machine:
         raise HTTPException(status_code=404, detail="Máquina não encontrada")
-    if req.alias is not None:
-        machine.alias = req.alias
-    if req.notes is not None:
-        machine.notes = req.notes
-    if req.is_favorite is not None:
-        machine.is_favorite = req.is_favorite
-    if req.client_group is not None:
-        machine.client_group = req.client_group
+    if req.alias is not None: machine.alias = req.alias
+    if req.notes is not None: machine.notes = req.notes
+    if req.is_favorite is not None: machine.is_favorite = req.is_favorite
+    if req.client_group is not None: machine.client_group = req.client_group
+    if req.department is not None: machine.department = req.department
     db.commit()
     return {"status": "success"}
 
 @app.delete("/api/machines/{machine_id}")
-def delete_machine(machine_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def delete_machine(machine_id: int, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
     machine = db.query(Machine).filter(Machine.id == machine_id).first()
     if not machine:
         raise HTTPException(status_code=404, detail="Máquina não encontrada")
@@ -162,25 +296,34 @@ def delete_machine(machine_id: int, current_user: User = Depends(get_current_use
     db.commit()
     return {"status": "deleted"}
 
-@app.post("/api/enroll-tokens")
-def create_enroll_token(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    token_str = secrets.token_urlsafe(16)
-    expires = datetime.utcnow() + timedelta(hours=24)
-    token = EnrollToken(token=token_str, created_by=current_user.username, expires_at=expires)
-    db.add(token)
-    db.commit()
-    return {"token": token_str, "expires_at": expires}
-
+# ----------------- Conexão e Controle de Concorrência -----------------
 @app.post("/api/machines/{machine_id}/connect", response_model=ConnectResponse)
-def get_connect_ticket(machine_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_connect_ticket(machine_id: int, force: bool = False, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     machine = db.query(Machine).filter(Machine.id == machine_id).first()
     if not machine:
         raise HTTPException(status_code=404, detail="Máquina não encontrada")
-    
-    # Registra auditoria da sessão
+
+    now = datetime.utcnow()
+    # Verifica se outro técnico já está atendendo
+    if machine.current_session_tech and machine.current_session_tech != current_user.username:
+        if machine.session_started_at and (now - machine.session_started_at).total_seconds() < 7200 and not force:
+            return ConnectResponse(
+                rustdesk_id=machine.rustdesk_id,
+                password="",
+                expires_in_seconds=0,
+                is_busy=True,
+                busy_by=machine.current_session_tech
+            )
+
+    # Bloqueia a máquina para este técnico
+    machine.current_session_tech = current_user.username
+    machine.session_started_at = now
+
     audit = ConnectionAudit(
         technician_username=current_user.username,
         machine_id=machine.id,
+        machine_name=machine.alias or machine.hostname,
+        client_group=machine.client_group,
         rustdesk_id=machine.rustdesk_id
     )
     db.add(audit)
@@ -190,8 +333,55 @@ def get_connect_ticket(machine_id: int, current_user: User = Depends(get_current
     return ConnectResponse(
         rustdesk_id=machine.rustdesk_id,
         password=decrypted_pwd,
-        expires_in_seconds=60
+        expires_in_seconds=60,
+        is_busy=False,
+        busy_by=current_user.username
     )
+
+@app.post("/api/machines/{machine_id}/disconnect")
+def release_session(machine_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    machine = db.query(Machine).filter(Machine.id == machine_id).first()
+    if machine and machine.current_session_tech == current_user.username:
+        machine.current_session_tech = None
+        machine.session_started_at = None
+        db.commit()
+    return {"status": "released"}
+
+# ----------------- Comandos Rápidos Silenciosos -----------------
+@app.post("/api/machines/{machine_id}/commands", response_model=RemoteCommandResponse)
+def send_command(machine_id: int, req: RemoteCommandRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    machine = db.query(Machine).filter(Machine.id == machine_id).first()
+    if not machine:
+        raise HTTPException(status_code=404, detail="Máquina não encontrada")
+    
+    cmd = RemoteCommand(
+        machine_id=machine.id,
+        command_type=req.command_type,
+        payload=req.payload,
+        status="pending",
+        created_by=current_user.username
+    )
+    db.add(cmd)
+    db.commit()
+    db.refresh(cmd)
+    return cmd
+
+# ----------------- Linha do Tempo e Notas Compartilhadas -----------------
+@app.get("/api/machines/{machine_id}/notes", response_model=List[MachineNoteResponse])
+def get_notes(machine_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return db.query(MachineNote).filter(MachineNote.machine_id == machine_id).order_by(MachineNote.created_at.desc()).all()
+
+@app.post("/api/machines/{machine_id}/notes", response_model=MachineNoteResponse)
+def add_note(machine_id: int, req: MachineNoteCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    note = MachineNote(
+        machine_id=machine_id,
+        author_username=current_user.username,
+        content=req.content
+    )
+    db.add(note)
+    db.commit()
+    db.refresh(note)
+    return note
 
 # ----------------- Rotas do Agent / Host -----------------
 @app.post("/api/agent/enroll")
@@ -206,7 +396,6 @@ def agent_enroll(req: EnrollRequest, request: Request, db: Session = Depends(get
     
     client_ip = request.client.host if request.client else None
 
-    # Verifica se a máquina já existe
     machine = db.query(Machine).filter(Machine.rustdesk_id == req.rustdesk_id).first()
     if not machine:
         machine = Machine(
@@ -239,15 +428,28 @@ def agent_heartbeat(req: HeartbeatRequest, request: Request, db: Session = Depen
         raise HTTPException(status_code=404, detail="Máquina não registrada")
     
     machine.last_seen_at = datetime.utcnow()
-    if req.logged_in_user:
-        machine.logged_in_user = req.logged_in_user
-    if req.ip_address:
-        machine.ip_address = req.ip_address
-    elif request.client:
-        machine.ip_address = request.client.host
+    if req.logged_in_user: machine.logged_in_user = req.logged_in_user
+    if req.ip_address: machine.ip_address = req.ip_address
+    elif request.client: machine.ip_address = request.client.host
+
+    # Busca comandos pendentes para o agente executar
+    pending_cmds = db.query(RemoteCommand).filter(
+        RemoteCommand.machine_id == machine.id,
+        RemoteCommand.status == "pending"
+    ).all()
+
+    cmds_to_return = []
+    for c in pending_cmds:
+        cmds_to_return.append({
+            "id": c.id,
+            "type": c.command_type,
+            "payload": c.payload
+        })
+        c.status = "executed"
+        c.executed_at = datetime.utcnow()
 
     db.commit()
-    return {"status": "alive"}
+    return {"status": "alive", "commands": cmds_to_return}
 
 # ----------------- Script One-Liner PowerShell -----------------
 @app.get("/install/{token}")
@@ -260,10 +462,18 @@ def serve_install_script(token: str, request: Request):
     else:
         content = "# BipDesk Install Script\n"
     
-    # Injeta a URL e o token dinamicamente
     content = content.replace('param(', f'# Injetado automaticamente\n$ServerUrl = "{base_url}"\n$EnrollToken = "{token}"\nparam(')
     return Response(content=content, media_type="text/plain; charset=utf-8")
 
+@app.post("/api/enroll-tokens")
+def create_enroll_token(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    token_str = secrets.token_urlsafe(16)
+    expires = datetime.utcnow() + timedelta(hours=24)
+    token = EnrollToken(token=token_str, created_by=current_user.username, expires_at=expires)
+    db.add(token)
+    db.commit()
+    return {"token": token_str, "expires_at": expires}
+
 @app.get("/healthz")
 def healthz():
-    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "ok", "version": "2.0.0", "timestamp": datetime.utcnow().isoformat()}

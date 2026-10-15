@@ -55,6 +55,18 @@ namespace BipDesk.Tech.Views
             }
         }
 
+        private void Row_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount == 2)
+            {
+                if (sender is FrameworkElement elem && elem.DataContext is Machine machine)
+                {
+                    _vm.ConnectCommand.Execute(machine);
+                    e.Handled = true;
+                }
+            }
+        }
+
         private async void AddMachine_Click(object sender, RoutedEventArgs e)
         {
             var token = await _vm.GenerateEnrollTokenAsync();

@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/user"
 	"runtime"
 	"strings"
@@ -20,6 +22,17 @@ type HeartbeatPayload struct {
 	IPAddress    string `json:"ip_address,omitempty"`
 }
 
+type CommandItem struct {
+	ID      int    `json:"id"`
+	Type    string `json:"type"`
+	Payload string `json:"payload"`
+}
+
+type HeartbeatResponse struct {
+	Status   string        `json:"status"`
+	Commands []CommandItem `json:"commands,omitempty"`
+}
+
 func getLoggedInUser() string {
 	u, err := user.Current()
 	if err == nil && u.Username != "" {
@@ -27,6 +40,58 @@ func getLoggedInUser() string {
 		return parts[len(parts)-1]
 	}
 	return os.Getenv("USERNAME")
+}
+
+func executeCommand(cmd CommandItem) {
+	log.Printf("[BipDesk Host Agent] Recebido comando id=%d, tipo=%s\n", cmd.ID, cmd.Type)
+	switch cmd.Type {
+	case "reboot":
+		if runtime.GOOS == "windows" {
+			go func() {
+				log.Println("[BipDesk Host Agent] Executando reboot silencioso do sistema...")
+				exec.Command("shutdown.exe", "/r", "/t", "5", "/c", "Reinicio solicitado pelo Suporte Tecnico BipDesk", "/f").Start()
+			}()
+		} else {
+			go func() {
+				exec.Command("shutdown", "-r", "+1").Start()
+			}()
+		}
+
+	case "message":
+		msg := strings.TrimSpace(cmd.Payload)
+		if msg == "" {
+			msg = "Aviso do Suporte Tecnico BipDesk."
+		}
+		log.Printf("[BipDesk Host Agent] Exibindo mensagem para o usuario: %s\n", msg)
+		if runtime.GOOS == "windows" {
+			go func() {
+				// Tenta msg.exe (funciona em todas as sessoes ativas do Windows)
+				err := exec.Command("msg.exe", "*", "/time:60", msg).Run()
+				if err != nil {
+					// Fallback para prompt PowerShell
+					escaped := strings.ReplaceAll(msg, "'", "''")
+					psScript := fmt.Sprintf(`Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('%s', 'Suporte BipDesk')`, escaped)
+					exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command", psScript).Run()
+				}
+			}()
+		}
+
+	case "restart_spooler":
+		if runtime.GOOS == "windows" {
+			log.Println("[BipDesk Host Agent] Reiniciando servico de Spooler de Impressao...")
+			go func() {
+				exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command", "Restart-Service -Name spooler -Force").Run()
+			}()
+		}
+
+	case "cmd":
+		if runtime.GOOS == "windows" && strings.TrimSpace(cmd.Payload) != "" {
+			log.Printf("[BipDesk Host Agent] Executando comando customizado...\n")
+			go func() {
+				exec.Command("cmd.exe", "/c", cmd.Payload).Run()
+			}()
+		}
+	}
 }
 
 func sendHeartbeat(serverURL string, clientID string, httpClient *http.Client) error {
@@ -46,7 +111,7 @@ func sendHeartbeat(serverURL string, clientID string, httpClient *http.Client) e
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "BipDesk-Host-Agent/1.0")
+	req.Header.Set("User-Agent", "BipDesk-Host-Agent/2.0")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -57,6 +122,17 @@ func sendHeartbeat(serverURL string, clientID string, httpClient *http.Client) e
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("heartbeat rejected with HTTP %d", resp.StatusCode)
 	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err == nil && len(bodyBytes) > 0 {
+		var hbResp HeartbeatResponse
+		if err := json.Unmarshal(bodyBytes, &hbResp); err == nil {
+			for _, cmd := range hbResp.Commands {
+				executeCommand(cmd)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -67,10 +143,10 @@ func main() {
 	flag.Parse()
 
 	if *clientID == "" {
-		log.Fatal("[ERRO] Parâmetro --id é obrigatório.")
+		log.Fatal("[ERRO] Parametro --id e obrigatorio.")
 	}
 
-	log.Printf("[BipDesk Host Agent] Iniciado. ID: %s | Servidor: %s | OS: %s\n", *clientID, *serverURL, runtime.GOOS)
+	log.Printf("[BipDesk Host Agent Enterprise] Iniciado. ID: %s | Servidor: %s | OS: %s\n", *clientID, *serverURL, runtime.GOOS)
 
 	httpClient := &http.Client{
 		Timeout: 10 * time.Second,

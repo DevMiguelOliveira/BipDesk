@@ -3,10 +3,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:BipDesk.Tech.ViewModels"
         xmlns:models="clr-namespace:BipDesk.Tech.Models"
-        Title="BipDesk Admin - Central de Suporte Técnico"
+        Title="BipDesk Enterprise Admin - Central de Suporte Remoto Multi-Técnico"
         Icon="pack://application:,,,/Resources/icon.ico"
-        Height="780" Width="1240"
-        MinHeight="600" MinWidth="900"
+        Height="840" Width="1380"
+        MinHeight="650" MinWidth="1050"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BrushBgDark}"
         Foreground="{StaticResource BrushTextPrimary}"
@@ -16,9 +16,11 @@
         <Grid.RowDefinitions>
             <!-- Topbar Header -->
             <RowDefinition Height="64"/>
-            <!-- Filter Bar -->
+            <!-- Filter Bar & View Toggle -->
             <RowDefinition Height="48"/>
-            <!-- Main Content (Cards + Drawer) -->
+            <!-- Toast Notification Banner -->
+            <RowDefinition Height="Auto"/>
+            <!-- Main Content (Sidebar + Machines + Drawer) -->
             <RowDefinition Height="*"/>
             <!-- Active Sessions Dock -->
             <RowDefinition Height="Auto"/>
@@ -36,27 +38,27 @@
 
                 <!-- Brand Title -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="BipDesk" FontSize="18" FontWeight="Bold" Foreground="{StaticResource BrushEmerald}"/>
-                    <TextBlock Text=" Admin" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}"/>
+                    <TextBlock Text="BipDesk" FontSize="19" FontWeight="Bold" Foreground="{StaticResource BrushEmerald}"/>
+                    <TextBlock Text=" Enterprise" FontSize="19" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}"/>
                 </StackPanel>
 
-                <!-- Cloud Status Pill -->
-                <Border Grid.Column="1" Margin="24,0,0,0" Background="#111620" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="12" Padding="10,4">
+                <!-- Cloud & Technician Status Pill -->
+                <Border Grid.Column="1" Margin="24,0,0,0" Background="#101520" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="14" Padding="12,5">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse Width="8" Height="8" Margin="0,0,8,0" Fill="{Binding ConnectionStatusColor}"/>
-                        <TextBlock Text="{Binding ConnectionStatus}" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
+                        <TextBlock Text="{Binding ConnectionStatus}" FontSize="12" FontWeight="Medium" Foreground="{StaticResource BrushTextSecondary}"/>
                     </StackPanel>
                 </Border>
 
-                <!-- Search Bar -->
-                <Grid Grid.Column="2" MaxWidth="480" HorizontalAlignment="Right" Margin="0,0,20,0" Width="380">
+                <!-- Search Bar (Virtual search across 1000+ machines) -->
+                <Grid Grid.Column="2" MaxWidth="500" HorizontalAlignment="Right" Margin="0,0,24,0" Width="420">
                     <TextBox x:Name="SearchBox" Style="{StaticResource SearchTextBoxStyle}" 
                              Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                             Padding="32,7,10,7"/>
+                             Padding="34,7,12,7"/>
                     <TextBlock Text="🔍" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" 
                                VerticalAlignment="Center" HorizontalAlignment="Left" Margin="10,0,0,0" IsHitTestVisible="False"/>
-                    <TextBlock Text="Pesquisar máquina... (Ctrl+K)" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" 
-                               VerticalAlignment="Center" HorizontalAlignment="Left" Margin="34,0,0,0" IsHitTestVisible="False">
+                    <TextBlock Text="Pesquisar máquina, IP, usuário ou setor... (Ctrl+K)" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" 
+                               VerticalAlignment="Center" HorizontalAlignment="Left" Margin="36,0,0,0" IsHitTestVisible="False">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Visibility" Value="Collapsed"/>
@@ -73,45 +75,163 @@
                 <!-- Action Buttons -->
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Content="🔄 Atualizar" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" Command="{Binding RefreshCommand}"/>
-                    <Button Content="+ Nova Máquina (Host)" Style="{StaticResource ConnectButtonStyle}" Click="AddMachine_Click"/>
+                    <Button Content="+ Novo Host (Instalador)" Style="{StaticResource ConnectButtonStyle}" Click="AddMachine_Click"/>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- FILTER BAR -->
+        <!-- FILTER & VIEW TOGGLE BAR -->
         <Border Grid.Row="1" Background="{StaticResource BrushBgDark}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,0,0,1" Padding="20,0">
             <Grid VerticalAlignment="Center">
-                <StackPanel Orientation="Horizontal">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Status Filter Pills -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
                     <Button Content="Todas as Máquinas" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" 
                             Command="{Binding SetFilterCommand}" CommandParameter="Todas"/>
-                    <Button Content="🟢 Online" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" 
+                    <Button Content="🟢 Disponíveis" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" 
                             Command="{Binding SetFilterCommand}" CommandParameter="Online"/>
+                    <Button Content="🟡 Em Atendimento" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" 
+                            Command="{Binding SetFilterCommand}" CommandParameter="EmAtendimento"/>
                     <Button Content="⭐ Favoritos" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" 
                             Command="{Binding SetFilterCommand}" CommandParameter="Favoritos"/>
                 </StackPanel>
 
-                <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource BrushTextSecondary}">
+                <!-- View Switcher (Cards vs High-Density Virtualized Table) -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Border Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="6">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="⊞ Cards" Padding="10,4" Margin="2" Cursor="Hand" BorderThickness="0"
+                                    Command="{Binding ToggleViewCommand}" CommandParameter="Grid">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="Foreground" Value="{StaticResource BrushTextSecondary}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsGridView}" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource BrushSurfaceHover}"/>
+                                                <Setter Property="Foreground" Value="{StaticResource BrushEmerald}"/>
+                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Content="☰ Tabela Densa" Padding="10,4" Margin="2" Cursor="Hand" BorderThickness="0"
+                                    Command="{Binding ToggleViewCommand}" CommandParameter="Table">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="Foreground" Value="{StaticResource BrushTextSecondary}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsTableView}" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource BrushSurfaceHover}"/>
+                                                <Setter Property="Foreground" Value="{StaticResource BrushEmerald}"/>
+                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Counters -->
+                <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource BrushTextSecondary}">
                     <Run Text="Total: "/>
                     <Run Text="{Binding TotalCount, Mode=OneWay}" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}"/>
-                    <Run Text="  |  Online: "/>
+                    <Run Text="  |  Disponíveis: "/>
                     <Run Text="{Binding OnlineCount, Mode=OneWay}" FontWeight="Bold" Foreground="{StaticResource BrushEmerald}"/>
+                    <Run Text="  |  Em Atendimento: "/>
+                    <Run Text="{Binding BusyCount, Mode=OneWay}" FontWeight="Bold" Foreground="{StaticResource BrushAmber}"/>
                 </TextBlock>
             </Grid>
         </Border>
 
-        <!-- MAIN CONTENT (CARDS + DRAWER) -->
-        <Grid Grid.Row="2">
+        <!-- TOAST STATUS NOTIFICATION BANNER -->
+        <Border Grid.Row="2" Background="#0C251C" BorderBrush="{StaticResource BrushEmerald}" BorderThickness="0,0,0,1" Padding="16,8">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding HasStatusNotification}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <TextBlock Text="⚡ " FontSize="13" Foreground="{StaticResource BrushEmerald}"/>
+                <TextBlock Text="{Binding StatusNotification}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- MAIN 3-COLUMN WORKSPACE -->
+        <Grid Grid.Row="3">
             <Grid.ColumnDefinitions>
+                <!-- Coluna 0: Empresas / Grupos Sidebar -->
+                <ColumnDefinition Width="230"/>
+                <!-- Coluna 1: Máquinas (Cards ou Tabela) -->
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="340"/>
+                <!-- Coluna 2: Drawer de Ações, Detalhes e Notas -->
+                <ColumnDefinition Width="380"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Grid de Máquinas (Cards) -->
-            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="16">
-                <ListBox ItemsSource="{Binding FilteredMachines}" 
-                         SelectedItem="{Binding SelectedMachine}"
-                         Background="Transparent" BorderThickness="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <!-- BARRA LATERAL: EMPRESAS / CLIENTES -->
+            <Border Grid.Column="0" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,0,1,0" Padding="14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="EMPRESAS / CLIENTES" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushTextSecondary}" Margin="6,4,0,10"/>
+
+                    <ListBox Grid.Row="1" ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}"
+                             Background="Transparent" BorderThickness="0"
+                             ItemContainerStyle="{StaticResource SidebarGroupItemStyle}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type models:CompanyGroup}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" FontSize="12" VerticalAlignment="Center"/>
+                                    <Border Grid.Column="1" Background="#0B0E14" CornerRadius="10" Padding="6,2" Margin="6,0,0,0">
+                                        <TextBlock FontSize="10" Foreground="{StaticResource BrushTextSecondary}">
+                                            <Run Text="{Binding OnlineMachines}" Foreground="{StaticResource BrushEmerald}" FontWeight="Bold"/>
+                                            <Run Text="/"/>
+                                            <Run Text="{Binding TotalMachines}"/>
+                                        </TextBlock>
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+
+            <!-- ÁREA CENTRAL: CARDS VIEW (Quando IsGridView == True) -->
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="14">
+                <ScrollViewer.Style>
+                    <Style TargetType="ScrollViewer">
+                        <Setter Property="Visibility" Value="Visible"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsGridView}" Value="False">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ScrollViewer.Style>
+
+                <ListBox ItemsSource="{Binding FilteredMachines}" SelectedItem="{Binding SelectedMachine}"
+                         Background="Transparent" BorderThickness="0">
                     <ListBox.ItemsPanel>
                         <ItemsPanelTemplate>
                             <WrapPanel Orientation="Horizontal"/>
@@ -120,7 +240,7 @@
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
                             <Setter Property="Padding" Value="0"/>
-                            <Setter Property="Margin" Value="8"/>
+                            <Setter Property="Margin" Value="6"/>
                             <Setter Property="Background" Value="Transparent"/>
                             <Setter Property="BorderThickness" Value="0"/>
                             <Setter Property="Template">
@@ -135,7 +255,7 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="{x:Type models:Machine}">
                             <!-- MACHINE CARD -->
-                            <Border Width="270" Height="175" Background="{StaticResource BrushSurface}" 
+                            <Border Width="275" Height="190" Background="{StaticResource BrushSurface}" 
                                     BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" 
                                     CornerRadius="10" Padding="14" MouseDown="Card_MouseDown">
                                 <Border.Style>
@@ -156,12 +276,14 @@
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
 
-                                    <!-- Top Row: Status + Favorite -->
+                                    <!-- Top: Status Badge + Favorite -->
                                     <Grid Grid.Row="0">
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Ellipse Width="8" Height="8" Margin="0,0,6,0" Fill="{Binding StatusColor}"/>
-                                            <TextBlock Text="{Binding StatusText}" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
-                                        </StackPanel>
+                                        <Border HorizontalAlignment="Left" Background="#111620" CornerRadius="10" Padding="8,3">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Ellipse Width="7" Height="7" Margin="0,0,6,0" Fill="{Binding StatusColor}"/>
+                                                <TextBlock Text="{Binding StatusShortText}" FontSize="11" FontWeight="Medium" Foreground="{StaticResource BrushTextSecondary}"/>
+                                            </StackPanel>
+                                        </Border>
 
                                         <TextBlock Text="⭐" FontSize="13" HorizontalAlignment="Right" Cursor="Hand">
                                             <TextBlock.Style>
@@ -177,17 +299,17 @@
                                         </TextBlock>
                                     </Grid>
 
-                                    <!-- Middle: Names and Info -->
+                                    <!-- Middle: Display Info -->
                                     <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="0,6">
                                         <TextBlock Text="{Binding DisplayName}" FontSize="15" FontWeight="SemiBold" 
                                                    Foreground="{StaticResource BrushTextPrimary}" TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Text="{Binding Hostname}" FontSize="11" Foreground="{StaticResource BrushTextSecondary}" 
-                                                   TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
+                                                   TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
                                         <TextBlock Text="{Binding SubtitleText}" FontSize="11" Foreground="{StaticResource BrushBlue}" 
-                                                   TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/>
+                                                   TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
                                     </StackPanel>
 
-                                    <!-- Bottom: Connect Button -->
+                                    <!-- Bottom: Quick Action -->
                                     <Button Grid.Row="2" Content="⚡ CONECTAR (Enter)" Style="{StaticResource ConnectButtonStyle}"
                                             Command="{Binding DataContext.ConnectCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                             CommandParameter="{Binding}" HorizontalAlignment="Stretch"/>
@@ -198,67 +320,270 @@
                 </ListBox>
             </ScrollViewer>
 
-            <!-- DRAWER LATERAL (DETALHES E NOTAS) -->
-            <Border Grid.Column="1" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1,0,0,0" Padding="18">
+            <!-- ÁREA CENTRAL: TABELA DENSA VIRTUALIZADA (Para 1.000+ Máquinas) -->
+            <Grid Grid.Column="1" Background="{StaticResource BrushBgDark}">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsTableView}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
+
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="38"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Cabeçalho da Tabela -->
+                <Border Grid.Row="0" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,0,0,1" Padding="14,0">
+                    <Grid VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="130"/>
+                            <ColumnDefinition Width="150"/>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="130"/>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="STATUS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushTextSecondary}"/>
+                        <TextBlock Grid.Column="1" Text="EMPRESA / DEPTO" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushTextSecondary}"/>
+                        <TextBlock Grid.Column="2" Text="APELIDO / HOST" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushTextSecondary}"/>
+                        <TextBlock Grid.Column="3" Text="USUÁRIO" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushTextSecondary}"/>
+                        <TextBlock Grid.Column="4" Text="IP" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushTextSecondary}"/>
+                        <TextBlock Grid.Column="5" Text="ÚLTIMO VISTO" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushTextSecondary}"/>
+                        <TextBlock Grid.Column="6" Text="AÇÕES RÁPIDAS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushTextSecondary}" HorizontalAlignment="Right" Margin="0,0,12,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- Linhas Virtualizadas em 60 FPS -->
+                <ListBox Grid.Row="1" ItemsSource="{Binding FilteredMachines}" SelectedItem="{Binding SelectedMachine}"
+                         Background="Transparent" BorderThickness="0"
+                         VirtualizingStackPanel.IsVirtualizing="True"
+                         VirtualizingStackPanel.VirtualizationMode="Recycling"
+                         ScrollViewer.IsDeferredScrollingEnabled="False"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="Margin" Value="0"/>
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="rowBorder" Background="{TemplateBinding Background}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,0,0,1" Padding="14,9">
+                                            <ContentPresenter/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="rowBorder" Property="Background" Value="{StaticResource BrushSurfaceHover}"/>
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="rowBorder" Property="Background" Value="#152726"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type models:Machine}">
+                            <Grid MouseDown="Row_MouseDown">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="130"/>
+                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="160"/>
+                                    <ColumnDefinition Width="130"/>
+                                    <ColumnDefinition Width="110"/>
+                                    <ColumnDefinition Width="100"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Status Badge -->
+                                <Border Grid.Column="0" HorizontalAlignment="Left" Background="{Binding StatusBadgeBg}" CornerRadius="10" Padding="8,3">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Ellipse Width="6" Height="6" Margin="0,0,6,0" Fill="{Binding StatusColor}"/>
+                                        <TextBlock Text="{Binding StatusShortText}" FontSize="11" Foreground="{Binding StatusColor}" FontWeight="SemiBold"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Empresa / Setor -->
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,8,0">
+                                    <TextBlock Text="{Binding ClientGroup}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding Department}" FontSize="10" Foreground="{StaticResource BrushTextSecondary}" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+
+                                <!-- Apelido / Hostname -->
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="0,0,8,0">
+                                    <TextBlock Text="{Binding DisplayName}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding Hostname}" FontSize="10" Foreground="{StaticResource BrushTextSecondary}" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+
+                                <!-- Usuário -->
+                                <TextBlock Grid.Column="3" Text="{Binding LoggedInUser, TargetNullValue='Sem usuário'}" FontSize="12" Foreground="{StaticResource BrushBlue}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+
+                                <!-- IP -->
+                                <TextBlock Grid.Column="4" Text="{Binding IpAddress, TargetNullValue='N/D'}" FontSize="11" Foreground="{StaticResource BrushTextSecondary}" VerticalAlignment="Center"/>
+
+                                <!-- Último Visto -->
+                                <TextBlock Grid.Column="5" Text="{Binding LastSeenAt, StringFormat='{}{0:dd/MM HH:mm}'}" FontSize="11" Foreground="{StaticResource BrushTextSecondary}" VerticalAlignment="Center"/>
+
+                                <!-- Ações Rápidas Inline -->
+                                <StackPanel Grid.Column="6" Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Content="💬" ToolTip="Enviar Mensagem na Tela" Style="{StaticResource InfoButtonStyle}" Margin="0,0,6,0"
+                                            Command="{Binding DataContext.SendMessageCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}"/>
+                                    <Button Content="🔄" ToolTip="Reiniciar Computador" Style="{StaticResource WarningButtonStyle}" Margin="0,0,6,0"
+                                            Command="{Binding DataContext.RebootCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}"/>
+                                    <Button Content="⚡ Conectar" Style="{StaticResource ConnectButtonStyle}" Padding="10,4" FontSize="11"
+                                            Command="{Binding DataContext.ConnectCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+
+            <!-- DRAWER LATERAL DIREITO (PAINEL DO TÉCNICO, AÇÕES E LINHA DO TEMPO) -->
+            <Border Grid.Column="2" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1,0,0,0" Padding="18">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel DataContext="{Binding SelectedMachine}">
-                        <TextBlock Text="DETALHES DO CLIENTE" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,14"/>
+                        <!-- Top Header -->
+                        <Grid Margin="0,0,0,10">
+                            <TextBlock Text="PAINEL DE ATENDIMENTO" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushTextSecondary}"/>
+                            <Border HorizontalAlignment="Right" Background="{Binding StatusBadgeBg}" CornerRadius="10" Padding="8,3">
+                                <TextBlock Text="{Binding StatusText}" FontSize="11" Foreground="{Binding StatusColor}" FontWeight="Bold"/>
+                            </Border>
+                        </Grid>
 
-                        <!-- Nome em Destaque -->
-                        <TextBlock Text="{Binding DisplayName}" FontSize="18" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}"/>
+                        <TextBlock Text="{Binding DisplayName}" FontSize="18" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}" TextTrimming="CharacterEllipsis"/>
                         <TextBlock Text="{Binding Hostname}" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,2,0,12"/>
+
+                        <!-- Concurrency Alert -->
+                        <Border Background="{StaticResource BrushAmberBg}" BorderBrush="{StaticResource BrushAmber}" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,0,14">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel>
+                                <TextBlock Text="⚠️ ATENÇÃO: EM ATENDIMENTO" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushAmber}"/>
+                                <TextBlock FontSize="11" Foreground="{StaticResource BrushTextPrimary}" Margin="0,2,0,0">
+                                    <Run Text="Conectado por: "/>
+                                    <Run Text="{Binding BusyBy}" FontWeight="Bold"/>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Ações Remotas Silenciosas -->
+                        <TextBlock Text="AÇÕES REMOTAS RÁPIDAS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,8"/>
+                        <UniformGrid Columns="3" Margin="0,0,0,14">
+                            <Button Content="💬 Mensagem" Style="{StaticResource InfoButtonStyle}" Margin="0,0,4,0"
+                                    Command="{Binding DataContext.SendMessageCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    CommandParameter="{Binding}"/>
+                            <Button Content="🖨️ Spooler" Style="{StaticResource InfoButtonStyle}" Margin="2,0,2,0"
+                                    Command="{Binding DataContext.RestartSpoolerCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    CommandParameter="{Binding}"/>
+                            <Button Content="🔄 Reiniciar" Style="{StaticResource WarningButtonStyle}" Margin="4,0,0,0"
+                                    Command="{Binding DataContext.RebootCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    CommandParameter="{Binding}"/>
+                        </UniformGrid>
+
+                        <!-- Botão Principal Conectar -->
+                        <Button Content="⚡ INICIAR ACESSO REMOTO (Enter)" Style="{StaticResource ConnectButtonStyle}" Padding="14,10" Margin="0,0,0,16"
+                                Command="{Binding DataContext.ConnectCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}"/>
 
                         <Separator Background="{StaticResource BrushBorder}" Margin="0,0,0,14"/>
 
-                        <!-- Metadados -->
-                        <Grid Margin="0,0,0,8">
-                            <TextBlock Text="Sistema Operacional:" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
-                            <TextBlock Text="{Binding OsVersion}" FontSize="11" Foreground="{StaticResource BrushTextPrimary}" HorizontalAlignment="Right"/>
-                        </Grid>
-                        <Grid Margin="0,0,0,8">
-                            <TextBlock Text="Usuário Logado:" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
-                            <TextBlock Text="{Binding LoggedInUser}" FontSize="11" Foreground="{StaticResource BrushTextPrimary}" HorizontalAlignment="Right"/>
-                        </Grid>
-                        <Grid Margin="0,0,0,8">
-                            <TextBlock Text="IP de Rede:" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
-                            <TextBlock Text="{Binding IpAddress}" FontSize="11" Foreground="{StaticResource BrushTextPrimary}" HorizontalAlignment="Right"/>
-                        </Grid>
-                        <Grid Margin="0,0,0,16">
+                        <!-- Metadados da Máquina -->
+                        <Grid Margin="0,0,0,6">
                             <TextBlock Text="ID BipDesk:" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
                             <TextBlock Text="{Binding RustdeskId}" FontSize="11" Foreground="{StaticResource BrushEmerald}" FontWeight="Bold" HorizontalAlignment="Right"/>
                         </Grid>
+                        <Grid Margin="0,0,0,6">
+                            <TextBlock Text="IP de Rede:" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
+                            <TextBlock Text="{Binding IpAddress}" FontSize="11" Foreground="{StaticResource BrushTextPrimary}" HorizontalAlignment="Right"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,6">
+                            <TextBlock Text="Usuário Logado:" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
+                            <TextBlock Text="{Binding LoggedInUser}" FontSize="11" Foreground="{StaticResource BrushTextPrimary}" HorizontalAlignment="Right"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,14">
+                            <TextBlock Text="Sistema Operacional:" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
+                            <TextBlock Text="{Binding OsVersion}" FontSize="11" Foreground="{StaticResource BrushTextPrimary}" HorizontalAlignment="Right"/>
+                        </Grid>
+
+                        <!-- Configuração e Organização -->
+                        <TextBlock Text="Empresa / Cliente" FontSize="11" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding ClientGroup, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SearchTextBoxStyle}" Margin="0,0,0,8"/>
+
+                        <TextBlock Text="Departamento / Setor" FontSize="11" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding Department, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SearchTextBoxStyle}" Margin="0,0,0,8"/>
+
+                        <TextBlock Text="Apelido da Máquina" FontSize="11" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding Alias, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SearchTextBoxStyle}" Margin="0,0,0,10"/>
+
+                        <Button Content="💾 Salvar Alterações" Style="{StaticResource SecondaryButtonStyle}" 
+                                Command="{Binding DataContext.SaveMachineInfoCommand, RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Right" Margin="0,0,0,16"/>
 
                         <Separator Background="{StaticResource BrushBorder}" Margin="0,0,0,14"/>
 
-                        <!-- Grupo / Empresa -->
-                        <TextBlock Text="Grupo / Empresa" FontSize="11" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4"/>
-                        <TextBox Text="{Binding ClientGroup, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SearchTextBoxStyle}" Margin="0,0,0,12"/>
+                        <!-- Linha do Tempo e Notas Técnicas Compartilhadas -->
+                        <TextBlock Text="HISTÓRICO &amp; NOTAS TÉCNICAS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,8"/>
+                        
+                        <!-- Formulário de Nova Nota -->
+                        <TextBox Text="{Binding DataContext.NewNoteText, RelativeSource={RelativeSource AncestorType=Window}, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource SearchTextBoxStyle}" Height="60" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Margin="0,0,0,6"/>
+                        <Button Content="+ Adicionar Nota Técnica" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Right" Margin="0,0,0,14"
+                                Command="{Binding DataContext.AddNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
 
-                        <!-- Apelido Amigável -->
-                        <TextBlock Text="Apelido da Máquina" FontSize="11" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4"/>
-                        <TextBox Text="{Binding Alias, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SearchTextBoxStyle}" Margin="0,0,0,12"/>
-
-                        <!-- Notas Privadas -->
-                        <TextBlock Text="Notas Privadas do Técnico" FontSize="11" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4"/>
-                        <TextBox Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SearchTextBoxStyle}" 
-                                 Height="90" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Margin="0,0,0,12"/>
-
-                        <Button Content="💾 Salvar Alterações" Style="{StaticResource SecondaryButtonStyle}" 
-                                Command="{Binding DataContext.SaveNotesCommand, RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Right"/>
+                        <!-- Lista de Notas Anteriores -->
+                        <ItemsControl ItemsSource="{Binding DataContext.CurrentMachineNotes, RelativeSource={RelativeSource AncestorType=Window}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type models:MachineNote}">
+                                    <Border Background="#10141C" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <Grid Margin="0,0,0,4">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="👤 " FontSize="10" Foreground="{StaticResource BrushBlue}"/>
+                                                    <TextBlock Text="{Binding AuthorUsername}" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushBlue}"/>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding FormattedDate}" FontSize="10" Foreground="{StaticResource BrushTextSecondary}" HorizontalAlignment="Right"/>
+                                            </Grid>
+                                            <TextBlock Text="{Binding Content}" FontSize="11" Foreground="{StaticResource BrushTextPrimary}" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
         </Grid>
 
         <!-- SESSÕES ATIVAS DOCK (BARRA INFERIOR) -->
-        <Border Grid.Row="3" Background="#07090D" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,1,0,0" Padding="16,8">
+        <Border Grid.Row="4" Background="#07090D" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,1,0,0" Padding="16,8">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" Text="Sessões Abertas:" FontSize="12" FontWeight="SemiBold" 
+                <TextBlock Grid.Column="0" Text="Sessões Abertas no Momento:" FontSize="12" FontWeight="SemiBold" 
                            Foreground="{StaticResource BrushTextSecondary}" VerticalAlignment="Center" Margin="0,0,12,0"/>
 
                 <ItemsControl Grid.Column="1" ItemsSource="{Binding ActiveSessions}">
