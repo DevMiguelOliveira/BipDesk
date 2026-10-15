@@ -8,9 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from slowapi import Limiter
+from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from .database import engine, Base, get_db, auto_migrate
 from .models import User, Machine, EnrollToken, ConnectionAudit, RemoteCommand, MachineNote
@@ -27,26 +29,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger("bipdesk.api")
 
-# Rate Limiter
-limiter = Limiter(key_func=get_remote_address)
-
-# Custom exception handler para rate limit
-@app.exception_handler(RateLimitExceeded)
-async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
-    return Response(
-        content={"detail": "Muitas requisições. Tente novamente mais tarde."},
-        status_code=429,
-        headers={"Retry-After": str(exc.retry_after)}
-    )
-
 # Cria ou atualiza tabelas e colunas
 Base.metadata.create_all(bind=engine)
 auto_migrate(engine)
 
-app = FastAPI(title="BipDesk Enterprise API", version="2.1.1")
+# Rate Limiter
+limiter = Limiter(key_func=get_remote_address)
 
-# Adicionar state para limiter
+app = FastAPI(title="BipDesk Enterprise API", version="2.1.2")
 app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -210,7 +203,8 @@ def require_admin(current_user: User = Depends(get_current_user)):
 
 # ----------------- Autenticação e Técnicos -----------------
 @app.post("/api/login", response_model=LoginResponse)
-def login(req: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("15/minute")
+def login(request: Request, req: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == req.username).first()
     if not user or not user.is_active or not verify_password(req.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Usuário ou senha incorretos")
@@ -244,7 +238,8 @@ def create_technician(req: TechnicianCreateRequest, current_user: User = Depends
     return user
 
 @app.post("/api/technicians/change-password")
-def change_password(req: ChangePasswordRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def change_password(request: Request, req: ChangePasswordRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not verify_password(req.old_password, current_user.password_hash):
         raise HTTPException(status_code=400, detail="Senha atual incorreta")
     current_user.password_hash = get_password_hash(req.new_password)
@@ -531,6 +526,7 @@ def agent_heartbeat(req: HeartbeatRequest, request: Request, db: Session = Depen
 
 # ----------------- Script One-Liner PowerShell -----------------
 @app.get("/install/{token}")
+@limiter.limit("30/minute")
 def serve_install_script(token: str, request: Request):
     base_url = f"{request.url.scheme}://{request.url.netloc}"
     possible_paths = [
@@ -559,7 +555,8 @@ def serve_install_script(token: str, request: Request):
     return Response(content=content, media_type="text/plain; charset=utf-8")
 
 @app.post("/api/enroll-tokens")
-def create_enroll_token(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+def create_enroll_token(request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     token_str = secrets.token_urlsafe(16)
     expires = datetime.utcnow() + timedelta(hours=24)
     token = EnrollToken(token=token_str, created_by=current_user.username, expires_at=expires)

@@ -362,13 +362,8 @@ func executeCommand(cmd CommandItem) {
 			}()
 		}
 
-	case "cmd":
-		if runtime.GOOS == "windows" && strings.TrimSpace(cmd.Payload) != "" {
-			log.Printf("[BipDesk Host Agent] Executando comando customizado...\n")
-			go func() {
-				exec.Command("cmd.exe", "/c", cmd.Payload).Run()
-			}()
-		}
+	default:
+		log.Printf("[BipDesk Host Agent] Tipo de comando desconhecido ou não autorizado: %s\n", cmd.Type)
 	}
 }
 
