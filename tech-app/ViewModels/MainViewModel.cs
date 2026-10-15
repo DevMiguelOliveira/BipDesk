@@ -83,7 +83,7 @@ namespace BipDesk.Tech.ViewModels
             IsLoading = true;
             if (!string.IsNullOrWhiteSpace(_api.CurrentUsername) && (_api.CurrentUsername != "admin" || !string.IsNullOrWhiteSpace(_api.CurrentFullName)))
             {
-                ConnectionStatus = $"Nuvem Conectada • {_api.CurrentFullName ?? _api.CurrentUsername} ({CurrentRoleBadge})";
+                ConnectionStatus = "Nuvem Conectada";
                 ConnectionStatusColor = "#00E5A3";
                 await LoadDataAsync();
                 _pollTimer.Start();
@@ -94,7 +94,7 @@ namespace BipDesk.Tech.ViewModels
                 bool logged = await _api.LoginAsync("admin", "BipDesk@2026");
                 if (logged)
                 {
-                    ConnectionStatus = $"Nuvem Conectada • {_api.CurrentFullName ?? _api.CurrentUsername} ({CurrentRoleBadge})";
+                    ConnectionStatus = "Nuvem Conectada";
                     ConnectionStatusColor = "#00E5A3";
                     await LoadDataAsync();
                     _pollTimer.Start();
@@ -123,10 +123,21 @@ namespace BipDesk.Tech.ViewModels
 
         public bool IsAdmin => _api.CurrentRole == "admin";
         public string CurrentUsername => _api.CurrentUsername;
-        public string CurrentRoleBadge => _api.CurrentRole == "admin" ? "Administrador" : "Técnico";
+        public string CurrentRoleBadge => _api.CurrentRole == "admin" ? "Admin" : "Técnico";
         public string CurrentRoleColor => _api.CurrentRole == "admin" ? "#F2CC60" : "#58A6FF";
         public string CurrentRoleBg => _api.CurrentRole == "admin" ? "#332711" : "#121F33";
-        public string CurrentTechnicianName => _api.CurrentFullName ?? _api.CurrentUsername;
+        public string CurrentDisplayName
+        {
+            get
+            {
+                if (_api.CurrentRole == "admin" && (_api.CurrentUsername == "admin" || string.IsNullOrWhiteSpace(_api.CurrentFullName) || _api.CurrentFullName.Contains("Admin")))
+                {
+                    return $"@{_api.CurrentUsername}";
+                }
+                return !string.IsNullOrWhiteSpace(_api.CurrentFullName) ? _api.CurrentFullName : $"@{_api.CurrentUsername}";
+            }
+        }
+        public string CurrentTechnicianName => CurrentDisplayName;
         public ApiClient Api => _api;
 
         public void Logout()

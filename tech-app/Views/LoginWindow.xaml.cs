@@ -9,10 +9,11 @@ namespace BipDesk.Tech.Views
 {
     public partial class LoginWindow : Window
     {
+        private const string ServerUrl = "https://bipdesk.duckdns.org";
+
         private class UserPrefs
         {
-            public string ServerUrl { get; set; } = "https://bipdesk.duckdns.org";
-            public string Username { get; set; } = "admin";
+            public string Username { get; set; } = "";
             public bool RememberMe { get; set; } = true;
         }
 
@@ -52,7 +53,6 @@ namespace BipDesk.Tech.Views
                     var prefs = JsonSerializer.Deserialize<UserPrefs>(json);
                     if (prefs != null)
                     {
-                        if (!string.IsNullOrWhiteSpace(prefs.ServerUrl)) TxtServer.Text = prefs.ServerUrl;
                         if (prefs.RememberMe && !string.IsNullOrWhiteSpace(prefs.Username))
                         {
                             TxtUsername.Text = prefs.Username;
@@ -64,13 +64,12 @@ namespace BipDesk.Tech.Views
             catch { }
         }
 
-        private void SavePreferences(string serverUrl, string username, bool remember)
+        private void SavePreferences(string username, bool remember)
         {
             try
             {
                 var prefs = new UserPrefs
                 {
-                    ServerUrl = serverUrl,
                     Username = remember ? username : "",
                     RememberMe = remember
                 };
@@ -82,15 +81,8 @@ namespace BipDesk.Tech.Views
 
         private async void BtnLogin_Click(object sender, RoutedEventArgs e)
         {
-            string serverUrl = TxtServer.Text.Trim();
             string username = TxtUsername.Text.Trim();
             string password = TxtPassword.Password;
-
-            if (string.IsNullOrWhiteSpace(serverUrl))
-            {
-                ShowError("Informe o endereço do servidor BipDesk Cloud.");
-                return;
-            }
 
             if (string.IsNullOrWhiteSpace(username))
             {
@@ -108,20 +100,20 @@ namespace BipDesk.Tech.Views
 
             TxtStatus.Visibility = Visibility.Collapsed;
             BtnLogin.IsEnabled = false;
-            BtnLogin.Content = "Autenticando na Nuvem...";
+            BtnLogin.Content = "Autenticando...";
             Cursor = Cursors.Wait;
 
             try
             {
                 var api = new ApiClient
                 {
-                    BaseUrl = serverUrl.TrimEnd('/')
+                    BaseUrl = ServerUrl
                 };
 
                 bool success = await api.LoginAsync(username, password);
                 if (success)
                 {
-                    SavePreferences(serverUrl, username, ChkRemember.IsChecked == true);
+                    SavePreferences(username, ChkRemember.IsChecked == true);
 
                     var mainWindow = new MainWindow(api);
                     mainWindow.Show();
@@ -129,7 +121,7 @@ namespace BipDesk.Tech.Views
                 }
                 else
                 {
-                    ShowError("Usuário ou senha incorretos, ou servidor inacessível.");
+                    ShowError("Usuário ou senha incorretos.");
                 }
             }
             catch (Exception ex)
@@ -140,7 +132,7 @@ namespace BipDesk.Tech.Views
             {
                 Cursor = Cursors.Arrow;
                 BtnLogin.IsEnabled = true;
-                BtnLogin.Content = "Entrar no BipDesk Admin";
+                BtnLogin.Content = "Entrar";
             }
         }
 
