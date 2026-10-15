@@ -4,6 +4,7 @@
 *.pem
 *.pub
 id_ed25519*
+*RS_PUB_KEY*
 *.env
 *.env.*
 secrets/
