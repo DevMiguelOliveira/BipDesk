@@ -38,8 +38,11 @@ services:
     container_name: bipdesk-api
     restart: unless-stopped
     network_mode: host
+    env_file:
+      - .env
     volumes:
       - /var/lib/bipdesk-api/data:/data
+      - /data/secrets:/data/secrets
       - /var/lib/bipdesk-server:/server-keys:ro
       - /var/www/bipdesk-downloads:/downloads:ro
     environment:
