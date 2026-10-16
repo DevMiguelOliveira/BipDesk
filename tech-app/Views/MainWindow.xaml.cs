@@ -68,7 +68,7 @@ namespace BipDesk.Tech.Views
             }
         }
 
-        private void QuickConnect_KeyDown(object sender, KeyEventArgs e)
+        private void SearchBox_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter)
             {
@@ -78,6 +78,11 @@ namespace BipDesk.Tech.Views
                     e.Handled = true;
                 }
             }
+        }
+
+        private void QuickConnect_KeyDown(object sender, KeyEventArgs e)
+        {
+            SearchBox_KeyDown(sender, e);
         }
 
         private void Card_MouseDown(object sender, MouseButtonEventArgs e)

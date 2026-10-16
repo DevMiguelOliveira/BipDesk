@@ -128,19 +128,19 @@
 
                     <!-- Nome Completo -->
                     <TextBlock Text="Nome Completo" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4"/>
-                    <TextBox x:Name="TxtNewFullName" Style="{StaticResource SearchTextBoxStyle}" Margin="0,0,0,12"/>
+                    <TextBox x:Name="TxtNewFullName" Style="{StaticResource SearchTextBoxStyle}" Height="36" FontSize="12" Margin="0,0,0,12"/>
 
                     <!-- Nome de Usuário -->
                     <TextBlock Text="Nome de Usuário (Login)" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4"/>
-                    <TextBox x:Name="TxtNewUsername" Style="{StaticResource SearchTextBoxStyle}" Margin="0,0,0,12"/>
+                    <TextBox x:Name="TxtNewUsername" Style="{StaticResource SearchTextBoxStyle}" Height="36" FontSize="12" Margin="0,0,0,12"/>
 
                     <!-- Senha -->
                     <TextBlock Text="Senha de Acesso" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4"/>
-                    <TextBox x:Name="TxtNewPassword" Style="{StaticResource SearchTextBoxStyle}" Margin="0,0,0,12"/>
+                    <TextBox x:Name="TxtNewPassword" Style="{StaticResource SearchTextBoxStyle}" Height="36" FontSize="12" Margin="0,0,0,12"/>
 
                     <!-- Cargo / Permissão -->
                     <TextBlock Text="Nível de Acesso (Cargo)" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,4"/>
-                    <ComboBox x:Name="CbNewRole" Height="34" Margin="0,0,0,16" SelectedIndex="0">
+                    <ComboBox x:Name="CbNewRole" Height="36" FontSize="12" Margin="0,0,0,16" SelectedIndex="0">
                         <ComboBoxItem Content="Técnico de Suporte (Padrão)"/>
                         <ComboBoxItem Content="Administrador (Acesso Total)"/>
                     </ComboBox>
@@ -149,7 +149,7 @@
                     <TextBlock x:Name="TxtFormStatus" Text="" FontSize="11" Margin="0,0,0,12" TextWrapping="Wrap" Visibility="Collapsed" HorizontalAlignment="Center"/>
 
                     <!-- Botão de Criação -->
-                    <Button x:Name="BtnCreateTechnician" Content="+ Criar Conta de Acesso" Style="{StaticResource ConnectButtonStyle}" Height="38" FontSize="13" Click="BtnCreateTechnician_Click"/>
+                    <Button x:Name="BtnCreateTechnician" Content="+ Criar Conta de Acesso" Style="{StaticResource ConnectButtonStyle}" Height="38" FontSize="12" Click="BtnCreateTechnician_Click"/>
                 </StackPanel>
             </Border>
         </Grid>

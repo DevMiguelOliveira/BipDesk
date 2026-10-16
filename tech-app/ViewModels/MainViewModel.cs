@@ -801,7 +801,7 @@ namespace BipDesk.Tech.ViewModels
                           $"Endereço IP: {machine.IpAddress ?? "N/D"}\n" +
                           $"Usuário Ativo: {machine.LoggedInUser ?? "Sem usuário"}\n" +
                           $"Sistema: {machine.OsVersion ?? "Windows"}\n" +
-                          $"Empresa / Setor: {machine.ClientGroup} - {machine.Department}\n" +
+                          $"Empresa / Cliente: {machine.ClientGroup}\n" +
                           $"Status: {machine.StatusText} (Último visto: {machine.FormattedLastSeen})";
 
             try
@@ -877,19 +877,35 @@ namespace BipDesk.Tech.ViewModels
 
         public async Task QuickConnectAsync()
         {
-            if (string.IsNullOrWhiteSpace(QuickConnectId))
+            var target = !string.IsNullOrWhiteSpace(SearchText) ? SearchText : QuickConnectId;
+            if (string.IsNullOrWhiteSpace(target))
             {
-                MessageBox.Show("Digite o ID do dispositivo para conectar.", "Conexão Rápida - BipDesk", MessageBoxButton.OK, MessageBoxImage.Information);
+                if (SelectedMachine != null)
+                {
+                    await ConnectToMachineAsync(SelectedMachine);
+                    return;
+                }
+                MessageBox.Show("Digite o ID ou selecione uma máquina para conectar.", "Conexão Rápida - BipDesk", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            var cleanTarget = QuickConnectId.Replace(" ", "").Trim();
+            var cleanTarget = target.Replace(" ", "").Trim();
 
-            // 1. Procura se existe máquina na lista local cadastrada
-            var existing = _rawMachines.FirstOrDefault(m => m.RustdeskId.Replace(" ", "").Trim() == cleanTarget);
+            // 1. Procura se existe máquina na lista local cadastrada por ID exato ou nome
+            var existing = _rawMachines.FirstOrDefault(m => 
+                m.RustdeskId.Replace(" ", "").Trim() == cleanTarget ||
+                string.Equals(m.DisplayName, target, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(m.Hostname, target, StringComparison.OrdinalIgnoreCase));
             if (existing != null)
             {
                 await ConnectToMachineAsync(existing);
+                return;
+            }
+
+            // Se filtrou apenas 1 máquina na busca atual
+            if (FilteredMachines.Count == 1)
+            {
+                await ConnectToMachineAsync(FilteredMachines[0]);
                 return;
             }
 

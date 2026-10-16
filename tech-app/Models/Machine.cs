@@ -324,9 +324,8 @@ namespace BipDesk.Tech.Models
             get
             {
                 var grp = string.IsNullOrWhiteSpace(ClientGroup) ? "Geral" : ClientGroup;
-                var dep = string.IsNullOrWhiteSpace(Department) || Department == "Geral" ? "" : $" • {Department}";
                 var usr = string.IsNullOrWhiteSpace(LoggedInUser) ? "Sem usuário" : LoggedInUser;
-                return $"{grp}{dep} • {usr}";
+                return $"{grp} • {usr}";
             }
         }
 
