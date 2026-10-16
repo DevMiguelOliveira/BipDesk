@@ -32,11 +32,19 @@ namespace BipDesk.Tech.Services
 
         public async Task<bool> LoginAsync(string username, string password)
         {
+            var debugFile = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BipDesk", "autologin_debug.txt");
             try
             {
                 var payload = new { username, password };
+                try { System.IO.File.AppendAllText(debugFile, $"[ApiClient] POST {BaseUrl}/api/login with user={username}...\n"); } catch { }
                 var resp = await _http.PostAsJsonAsync($"{BaseUrl}/api/login", payload);
-                if (!resp.IsSuccessStatusCode) return false;
+                try { System.IO.File.AppendAllText(debugFile, $"[ApiClient] Response status: {(int)resp.StatusCode} {resp.StatusCode}\n"); } catch { }
+                if (!resp.IsSuccessStatusCode)
+                {
+                    var errBody = await resp.Content.ReadAsStringAsync();
+                    try { System.IO.File.AppendAllText(debugFile, $"[ApiClient] Error body: {errBody}\n"); } catch { }
+                    return false;
+                }
 
                 var data = await resp.Content.ReadFromJsonAsync<JsonElement>();
                 if (data.TryGetProperty("access_token", out var tokenProp))
@@ -48,11 +56,13 @@ namespace BipDesk.Tech.Services
                     if (data.TryGetProperty("full_name", out var fn)) CurrentFullName = fn.GetString();
                     if (data.TryGetProperty("role", out var r)) CurrentRole = r.GetString() ?? "technician";
 
+                    try { System.IO.File.AppendAllText(debugFile, $"[ApiClient] Token acquired successfully for {CurrentUsername}!\n"); } catch { }
                     return true;
                 }
             }
             catch (Exception ex)
             {
+                try { System.IO.File.AppendAllText(debugFile, $"[ApiClient] EXCEPTION: {ex}\n"); } catch { }
                 System.Diagnostics.Debug.WriteLine($"[ApiClient] Login error: {ex.Message}");
             }
             return false;
