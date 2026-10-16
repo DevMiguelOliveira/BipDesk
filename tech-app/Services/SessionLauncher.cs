@@ -63,10 +63,38 @@ namespace BipDesk.Tech.Services
             }
         }
 
+        public static void EnsureRustDeskClientConfig()
+        {
+            try
+            {
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var configDir = Path.Combine(appData, "RustDesk", "config");
+                Directory.CreateDirectory(configDir);
+
+                var configPath = Path.Combine(configDir, "RustDesk2.toml");
+                var serverHost = "bipdesk.duckdns.org";
+                var serverKey = Environment.GetEnvironmentVariable("BIPDESK_SERVER_KEY") ?? "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw=";
+
+                var tomlContent = $@"rendezvous_server = '{serverHost}'
+relay_server = '{serverHost}'
+
+[options]
+custom-rendezvous-server = '{serverHost}'
+key = '{serverKey}'
+";
+                File.WriteAllText(configPath, tomlContent);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SessionLauncher] Erro ao gravar RustDesk2.toml: {ex.Message}");
+            }
+        }
+
         public async Task<Process?> LaunchSessionAsync(Machine machine, string password, Action<ActiveSession> onSessionTerminated, Action<string>? statusCallback = null)
         {
             try
             {
+                EnsureRustDeskClientConfig();
                 var exePath = await EnsureSessionExecutableAsync(statusCallback);
                 if (!File.Exists(exePath))
                 {
@@ -78,7 +106,7 @@ namespace BipDesk.Tech.Services
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = exePath,
-                    Arguments = $"--connect {machine.RustdeskId} --password {password} --server bipdesk.duckdns.org --key {serverKey}",
+                    Arguments = $"--connect {machine.RustdeskId} --password {password} --config host=bipdesk.duckdns.org,key={serverKey}",
                     UseShellExecute = false,
                     CreateNoWindow = false
                 };
@@ -88,11 +116,25 @@ namespace BipDesk.Tech.Services
 
                 var session = new ActiveSession(machine, proc);
 
-                proc.EnableRaisingEvents = true;
-                proc.Exited += (s, e) =>
+                try
                 {
-                    onSessionTerminated?.Invoke(session);
-                };
+                    proc.EnableRaisingEvents = true;
+                    proc.Exited += (s, e) =>
+                    {
+                        try
+                        {
+                            onSessionTerminated?.Invoke(session);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"[SessionLauncher] onSessionTerminated erro ignorado: {ex.Message}");
+                        }
+                    };
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[SessionLauncher] Erro ao configurar Exited event: {ex.Message}");
+                }
 
                 return proc;
             }
@@ -107,13 +149,14 @@ namespace BipDesk.Tech.Services
         {
             try
             {
+                EnsureRustDeskClientConfig();
                 var exePath = await EnsureSessionExecutableAsync(statusCallback);
                 var serverKey = Environment.GetEnvironmentVariable("BIPDESK_SERVER_KEY") ?? "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw=";
 
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = exePath,
-                    Arguments = $"--connect {rustdeskId} --server bipdesk.duckdns.org --key {serverKey}",
+                    Arguments = $"--connect {rustdeskId} --config host=bipdesk.duckdns.org,key={serverKey}",
                     UseShellExecute = false,
                     CreateNoWindow = false
                 };

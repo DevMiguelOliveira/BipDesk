@@ -248,6 +248,28 @@ namespace BipDesk.Tech.Models
             }
         }
 
+        public void UpdateFrom(Machine other, bool updateEditableFields = false)
+        {
+            IsOnline = other.IsOnline;
+            IsBusy = other.IsBusy;
+            BusyBy = other.BusyBy;
+            LastSeenAt = other.LastSeenAt;
+            LoggedInUser = other.LoggedInUser;
+            IpAddress = other.IpAddress;
+            OsVersion = other.OsVersion;
+            Hostname = other.Hostname;
+            RustdeskId = other.RustdeskId;
+
+            if (updateEditableFields)
+            {
+                Alias = other.Alias;
+                ClientGroup = other.ClientGroup;
+                Department = other.Department;
+                Notes = other.Notes;
+                IsFavorite = other.IsFavorite;
+            }
+        }
+
         // Propriedades calculadas para exibição rápida e virtualizada
         public string DisplayName => !string.IsNullOrWhiteSpace(Alias) ? Alias : Hostname;
 
@@ -285,11 +307,14 @@ namespace BipDesk.Tech.Models
             get
             {
                 if (IsOnline) return "Ativo agora";
-                var local = LastSeenAt.ToLocalTime();
+                var utc = (LastSeenAt.Kind == DateTimeKind.Utc)
+                    ? LastSeenAt
+                    : DateTime.SpecifyKind(LastSeenAt, DateTimeKind.Utc);
+                var local = utc.ToLocalTime();
                 var diff = DateTime.Now - local;
-                if (diff.TotalMinutes < 1) return "Há instantes";
-                if (diff.TotalMinutes < 60) return $"Há {(int)diff.TotalMinutes} min";
-                if (diff.TotalHours < 24) return $"Há {(int)diff.TotalHours} h";
+                if (diff.TotalMinutes < 1 && diff.TotalMinutes >= 0) return "Há instantes";
+                if (diff.TotalMinutes < 60 && diff.TotalMinutes >= 0) return $"Há {(int)diff.TotalMinutes} min";
+                if (diff.TotalHours < 24 && diff.TotalHours >= 0) return $"Há {(int)diff.TotalHours} h";
                 return local.ToString("dd/MM HH:mm");
             }
         }
@@ -354,7 +379,16 @@ namespace BipDesk.Tech.Models
         [JsonPropertyName("created_at")]
         public DateTime CreatedAt { get; set; }
 
-        public string FormattedDate => CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+        public string FormattedDate
+        {
+            get
+            {
+                var utc = (CreatedAt.Kind == DateTimeKind.Utc)
+                    ? CreatedAt
+                    : DateTime.SpecifyKind(CreatedAt, DateTimeKind.Utc);
+                return utc.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+            }
+        }
     }
 
     public class Technician

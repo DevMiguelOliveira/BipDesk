@@ -237,6 +237,8 @@ namespace BipDesk.Tech.ViewModels
             set { _quickConnectId = value; OnPropertyChanged(); }
         }
 
+        private int? _lastNotesMachineId = null;
+
         public Machine? SelectedMachine
         {
             get => _selectedMachine;
@@ -247,7 +249,16 @@ namespace BipDesk.Tech.ViewModels
                     _selectedMachine = value;
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(HasSelectedMachine));
-                    _ = LoadNotesForSelectedMachineAsync();
+                    if (_selectedMachine != null && _selectedMachine.Id != _lastNotesMachineId)
+                    {
+                        _lastNotesMachineId = _selectedMachine.Id;
+                        _ = LoadNotesForSelectedMachineAsync();
+                    }
+                    else if (_selectedMachine == null)
+                    {
+                        _lastNotesMachineId = null;
+                        CurrentMachineNotes.Clear();
+                    }
                 }
             }
         }
@@ -333,18 +344,99 @@ namespace BipDesk.Tech.ViewModels
 
         private async Task PollDataAsync()
         {
-            var groupsTask = _api.GetGroupsAsync();
-            var machinesTask = _api.GetMachinesAsync();
+            try
+            {
+                var groupsTask = _api.GetGroupsAsync();
+                var machinesTask = _api.GetMachinesAsync();
 
-            await Task.WhenAll(groupsTask, machinesTask);
+                await Task.WhenAll(groupsTask, machinesTask);
 
-            UpdateGroupsList(await groupsTask);
-            _rawMachines = await machinesTask;
+                var newGroups = await groupsTask;
+                var newMachines = await machinesTask;
 
-            OnPropertyChanged(nameof(TotalCount));
-            OnPropertyChanged(nameof(OnlineCount));
-            OnPropertyChanged(nameof(BusyCount));
-            ApplyFilter(keepSelection: true);
+                UpdateGroupsList(newGroups);
+
+                // Atualiza as máquinas existentes EM-LOCAL (sem substituir as instâncias e sem limpar coleções)
+                var currentSelectedId = SelectedMachine?.Id;
+
+                var newMachineMap = newMachines.ToDictionary(m => m.Id);
+                var toRemove = new List<Machine>();
+
+                foreach (var existing in _rawMachines)
+                {
+                    if (newMachineMap.TryGetValue(existing.Id, out var updated))
+                    {
+                        // Se o técnico estiver com a máquina aberta no drawer, preserva campos que ele pode estar digitando
+                        bool isCurrentlyEditing = (existing.Id == currentSelectedId);
+                        existing.UpdateFrom(updated, updateEditableFields: !isCurrentlyEditing);
+                    }
+                    else
+                    {
+                        toRemove.Add(existing);
+                    }
+                }
+
+                // Remove máquinas excluídas
+                foreach (var rem in toRemove)
+                {
+                    _rawMachines.Remove(rem);
+                    FilteredMachines.Remove(rem);
+                    if (SelectedMachine?.Id == rem.Id)
+                    {
+                        SelectedMachine = FilteredMachines.FirstOrDefault();
+                    }
+                }
+
+                // Adiciona novas máquinas que apareceram
+                var existingIds = new HashSet<int>(_rawMachines.Select(m => m.Id));
+                foreach (var m in newMachines)
+                {
+                    if (!existingIds.Contains(m.Id))
+                    {
+                        _rawMachines.Add(m);
+                        if (IsMachineMatchingFilter(m))
+                        {
+                            FilteredMachines.Add(m);
+                        }
+                    }
+                }
+
+                OnPropertyChanged(nameof(TotalCount));
+                OnPropertyChanged(nameof(OnlineCount));
+                OnPropertyChanged(nameof(BusyCount));
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[MainViewModel] Erro no polling periódico: {ex.Message}");
+            }
+        }
+
+        private bool IsMachineMatchingFilter(Machine m)
+        {
+            if (SelectedGroup != null && SelectedGroup.Name != "Todas as Empresas")
+            {
+                if (!string.Equals(m.ClientGroup, SelectedGroup.Name, StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+
+            if (ActiveFilter == "Online" && !m.IsOnline) return false;
+            if ((ActiveFilter == "EmAtendimento" || ActiveFilter == "Busy") && !m.IsBusy) return false;
+            if (ActiveFilter == "Favoritos" && !m.IsFavorite) return false;
+
+            if (!string.IsNullOrWhiteSpace(SearchText))
+            {
+                var term = SearchText.Trim().ToLower();
+                return (m.Alias != null && m.Alias.ToLower().Contains(term)) ||
+                       m.Hostname.ToLower().Contains(term) ||
+                       (m.LoggedInUser != null && m.LoggedInUser.ToLower().Contains(term)) ||
+                       (m.IpAddress != null && m.IpAddress.ToLower().Contains(term)) ||
+                       (m.RustdeskId.ToLower().Contains(term)) ||
+                       (m.Department != null && m.Department.ToLower().Contains(term)) ||
+                       (m.Notes != null && m.Notes.ToLower().Contains(term)) ||
+                       (m.ClientGroup != null && m.ClientGroup.ToLower().Contains(term));
+            }
+
+            return true;
         }
 
         private void UpdateGroupsList(List<CompanyGroup> fetchedGroups)
@@ -360,6 +452,17 @@ namespace BipDesk.Tech.ViewModels
 
             var list = new List<CompanyGroup> { allGroup };
             list.AddRange(fetchedGroups);
+
+            // Atualiza contadores em-local para não disparar CollectionChanged se os nomes forem os mesmos
+            if (Groups.Count == list.Count && Groups.Select(g => g.Name).SequenceEqual(list.Select(g => g.Name)))
+            {
+                for (int i = 0; i < list.Count; i++)
+                {
+                    Groups[i].TotalMachines = list[i].TotalMachines;
+                    Groups[i].OnlineMachines = list[i].OnlineMachines;
+                }
+                return;
+            }
 
             Groups.Clear();
             foreach (var g in list)
@@ -392,7 +495,7 @@ namespace BipDesk.Tech.ViewModels
             // Filtro de Tabs de Status
             if (ActiveFilter == "Online")
                 query = query.Where(m => m.IsOnline);
-            else if (ActiveFilter == "EmAtendimento")
+            else if (ActiveFilter == "EmAtendimento" || ActiveFilter == "Busy")
                 query = query.Where(m => m.IsBusy);
             else if (ActiveFilter == "Favoritos")
                 query = query.Where(m => m.IsFavorite);
@@ -420,7 +523,11 @@ namespace BipDesk.Tech.ViewModels
 
             if (keepSelection && currentId.HasValue)
             {
-                SelectedMachine = FilteredMachines.FirstOrDefault(m => m.Id == currentId.Value);
+                var found = FilteredMachines.FirstOrDefault(m => m.Id == currentId.Value);
+                if (found != null && SelectedMachine?.Id != found.Id)
+                {
+                    SelectedMachine = found;
+                }
             }
             else if (FilteredMachines.Count > 0 && SelectedMachine == null)
             {
@@ -481,15 +588,28 @@ namespace BipDesk.Tech.ViewModels
             }
 
             // 3. Inicia o BipDesk_Session nativo customizado (baixa automaticamente se ainda não existir)
-            var proc = await _launcher.LaunchSessionAsync(machine, ticket.Password, async session =>
+            var proc = await _launcher.LaunchSessionAsync(machine, ticket.Password, session =>
             {
                 Application.Current?.Dispatcher?.Invoke(() =>
                 {
-                    ActiveSessions.Remove(session);
+                    try
+                    {
+                        ActiveSessions.Remove(session);
+                        session.Machine.IsBusy = false;
+                        session.Machine.BusyBy = null;
+                        OnPropertyChanged(nameof(BusyCount));
+                    }
+                    catch { }
                 });
-                // Libera o lock da sessão no servidor
-                await _api.ReleaseSessionAsync(machine.Id);
-                await PollDataAsync();
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _api.ReleaseSessionAsync(machine.Id);
+                    }
+                    catch { }
+                });
             }, msg => ShowNotification(msg));
 
             if (proc != null)
@@ -516,8 +636,18 @@ namespace BipDesk.Tech.ViewModels
                 catch { }
 
                 ActiveSessions.Remove(session);
-                await _api.ReleaseSessionAsync(session.Machine.Id);
-                await PollDataAsync();
+                session.Machine.IsBusy = false;
+                session.Machine.BusyBy = null;
+                OnPropertyChanged(nameof(BusyCount));
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _api.ReleaseSessionAsync(session.Machine.Id);
+                    }
+                    catch { }
+                });
             }
         }
 
@@ -650,14 +780,22 @@ namespace BipDesk.Tech.ViewModels
                 };
                 var session = new ActiveSession(directMachine, proc);
                 ActiveSessions.Add(session);
-                proc.EnableRaisingEvents = true;
-                proc.Exited += (s, e) =>
+                try
                 {
-                    Application.Current?.Dispatcher?.Invoke(() =>
+                    proc.EnableRaisingEvents = true;
+                    proc.Exited += (s, e) =>
                     {
-                        ActiveSessions.Remove(session);
-                    });
-                };
+                        try
+                        {
+                            Application.Current?.Dispatcher?.Invoke(() =>
+                            {
+                                ActiveSessions.Remove(session);
+                            });
+                        }
+                        catch { }
+                    };
+                }
+                catch { }
             }
         }
 
