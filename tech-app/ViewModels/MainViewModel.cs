@@ -65,6 +65,12 @@ namespace BipDesk.Tech.ViewModels
             SendMessageCommand = new RelayCommand(async p => await SendMessageToUserAsync(p as Machine ?? SelectedMachine));
             RestartSpoolerCommand = new RelayCommand(async p => await RestartSpoolerAsync(p as Machine ?? SelectedMachine));
 
+            // Conexão Rápida e Ações Auxiliares (Estilo TeamViewer)
+            QuickConnectCommand = new RelayCommand(async _ => await QuickConnectAsync());
+            DeleteMachineCommand = new RelayCommand(async p => await DeleteMachineAsync(p as Machine ?? SelectedMachine));
+            CopyIdCommand = new RelayCommand(p => CopyId(p?.ToString()));
+            CopyIpCommand = new RelayCommand(p => CopyIp(p?.ToString()));
+
             // Notas Técnicas
             AddNoteCommand = new RelayCommand(async _ => await AddNoteAsync());
 
@@ -224,6 +230,13 @@ namespace BipDesk.Tech.ViewModels
             }
         }
 
+        private string _quickConnectId = string.Empty;
+        public string QuickConnectId
+        {
+            get => _quickConnectId;
+            set { _quickConnectId = value; OnPropertyChanged(); }
+        }
+
         public Machine? SelectedMachine
         {
             get => _selectedMachine;
@@ -233,10 +246,13 @@ namespace BipDesk.Tech.ViewModels
                 {
                     _selectedMachine = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(HasSelectedMachine));
                     _ = LoadNotesForSelectedMachineAsync();
                 }
             }
         }
+
+        public bool HasSelectedMachine => SelectedMachine != null;
 
         public string NewNoteText
         {
@@ -294,6 +310,10 @@ namespace BipDesk.Tech.ViewModels
         public ICommand AddNoteCommand { get; }
         public ICommand ApplyUpdateCommand { get; }
         public ICommand CheckUpdateCommand { get; }
+        public ICommand QuickConnectCommand { get; }
+        public ICommand DeleteMachineCommand { get; }
+        public ICommand CopyIdCommand { get; }
+        public ICommand CopyIpCommand { get; }
 
         public async Task LoadDataAsync()
         {
@@ -598,10 +618,104 @@ namespace BipDesk.Tech.ViewModels
             }
         }
 
+        public async Task QuickConnectAsync()
+        {
+            if (string.IsNullOrWhiteSpace(QuickConnectId))
+            {
+                MessageBox.Show("Digite o ID do dispositivo para conectar.", "Conexão Rápida - BipDesk", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var cleanTarget = QuickConnectId.Replace(" ", "").Trim();
+
+            // 1. Procura se existe máquina na lista local cadastrada
+            var existing = _rawMachines.FirstOrDefault(m => m.RustdeskId.Replace(" ", "").Trim() == cleanTarget);
+            if (existing != null)
+            {
+                await ConnectToMachineAsync(existing);
+                return;
+            }
+
+            // 2. Conexão direta por ID avulso (Estilo TeamViewer)
+            ShowNotification($"Iniciando sessão para o ID {cleanTarget}...");
+            var proc = await _launcher.LaunchDirectSessionAsync(cleanTarget, msg => ShowNotification(msg));
+            if (proc != null)
+            {
+                var directMachine = new Machine
+                {
+                    Id = 0,
+                    RustdeskId = cleanTarget,
+                    Hostname = $"ID-{cleanTarget}",
+                    Alias = $"Conexão Avulsa ({cleanTarget})"
+                };
+                var session = new ActiveSession(directMachine, proc);
+                ActiveSessions.Add(session);
+                proc.EnableRaisingEvents = true;
+                proc.Exited += (s, e) =>
+                {
+                    Application.Current?.Dispatcher?.Invoke(() =>
+                    {
+                        ActiveSessions.Remove(session);
+                    });
+                };
+            }
+        }
+
+        public async Task DeleteMachineAsync(Machine? machine)
+        {
+            if (machine == null) machine = SelectedMachine;
+            if (machine == null || machine.Id <= 0) return;
+
+            var res = MessageBox.Show(
+                $"Deseja realmente desvincular e remover a máquina '{machine.DisplayName}' do painel BipDesk?\n\nEsta ação remove o registro do inventário na nuvem.",
+                "Remover Máquina - BipDesk",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (res == MessageBoxResult.Yes)
+            {
+                bool ok = await _api.DeleteMachineAsync(machine.Id);
+                if (ok)
+                {
+                    _rawMachines.Remove(machine);
+                    if (SelectedMachine?.Id == machine.Id)
+                    {
+                        SelectedMachine = null;
+                    }
+                    ShowNotification($"Dispositivo {machine.DisplayName} removido.");
+                    await LoadDataAsync();
+                }
+                else
+                {
+                    MessageBox.Show("Não foi possível remover a máquina.", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void CopyId(string? id)
+        {
+            var target = !string.IsNullOrWhiteSpace(id) ? id : SelectedMachine?.RustdeskId;
+            if (!string.IsNullOrWhiteSpace(target))
+            {
+                Clipboard.SetText(target);
+                ShowNotification($"ID {target} copiado para a área de transferência!");
+            }
+        }
+
+        private void CopyIp(string? ip)
+        {
+            var target = !string.IsNullOrWhiteSpace(ip) ? ip : SelectedMachine?.IpAddress;
+            if (!string.IsNullOrWhiteSpace(target))
+            {
+                Clipboard.SetText(target);
+                ShowNotification($"IP {target} copiado!");
+            }
+        }
+
         private async Task SaveMachineInfoAsync()
         {
             if (SelectedMachine == null) return;
-            await _api.UpdateMachineAsync(
+            bool ok = await _api.UpdateMachineAsync(
                 SelectedMachine.Id,
                 SelectedMachine.Alias,
                 SelectedMachine.Notes,
@@ -609,14 +723,24 @@ namespace BipDesk.Tech.ViewModels
                 SelectedMachine.ClientGroup,
                 SelectedMachine.Department);
 
-            ShowNotification($"Informações de {SelectedMachine.DisplayName} salvas.");
+            if (ok)
+            {
+                ShowNotification($"Informações de {SelectedMachine.DisplayName} salvas com sucesso.");
+                await LoadDataAsync();
+            }
+            else
+            {
+                MessageBox.Show("Não foi possível salvar as alterações.", "Erro", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
 
         private async Task ToggleFavoriteAsync(Machine? machine)
         {
+            if (machine == null) machine = SelectedMachine;
             if (machine == null) return;
             machine.IsFavorite = !machine.IsFavorite;
             await _api.UpdateMachineAsync(machine.Id, machine.Alias, machine.Notes, machine.IsFavorite, machine.ClientGroup, machine.Department);
+            ShowNotification(machine.IsFavorite ? $"★ {machine.DisplayName} adicionado aos favoritos!" : $"☆ {machine.DisplayName} removido dos favoritos.");
             ApplyFilter(keepSelection: true);
         }
 

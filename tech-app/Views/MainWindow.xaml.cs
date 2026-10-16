@@ -68,6 +68,18 @@ namespace BipDesk.Tech.Views
             }
         }
 
+        private void QuickConnect_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                if (_vm.QuickConnectCommand.CanExecute(null))
+                {
+                    _vm.QuickConnectCommand.Execute(null);
+                    e.Handled = true;
+                }
+            }
+        }
+
         private void Card_MouseDown(object sender, MouseButtonEventArgs e)
         {
             // Duplo clique conecta imediatamente na máquina

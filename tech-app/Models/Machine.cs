@@ -1,65 +1,298 @@
 using System;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 
 namespace BipDesk.Tech.Models
 {
-    public class Machine
+    public class Machine : INotifyPropertyChanged
     {
+        private int _id;
+        private string _rustdeskId = string.Empty;
+        private string _hostname = string.Empty;
+        private string? _alias;
+        private string _clientGroup = "Geral";
+        private string _department = "Geral";
+        private string? _notes;
+        private bool _isFavorite;
+        private bool _isOnline;
+        private bool _isBusy;
+        private string? _busyBy;
+        private string? _loggedInUser;
+        private string? _osVersion;
+        private string? _ipAddress;
+        private DateTime _lastSeenAt;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
         [JsonPropertyName("id")]
-        public int Id { get; set; }
+        public int Id
+        {
+            get => _id;
+            set { if (_id != value) { _id = value; OnPropertyChanged(); } }
+        }
 
         [JsonPropertyName("rustdesk_id")]
-        public string RustdeskId { get; set; } = string.Empty;
+        public string RustdeskId
+        {
+            get => _rustdeskId;
+            set
+            {
+                if (_rustdeskId != value)
+                {
+                    _rustdeskId = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(FormattedRustdeskId));
+                }
+            }
+        }
 
         [JsonPropertyName("hostname")]
-        public string Hostname { get; set; } = string.Empty;
+        public string Hostname
+        {
+            get => _hostname;
+            set
+            {
+                if (_hostname != value)
+                {
+                    _hostname = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(DisplayName));
+                }
+            }
+        }
 
         [JsonPropertyName("alias")]
-        public string? Alias { get; set; }
+        public string? Alias
+        {
+            get => _alias;
+            set
+            {
+                if (_alias != value)
+                {
+                    _alias = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(DisplayName));
+                }
+            }
+        }
 
         [JsonPropertyName("client_group")]
-        public string ClientGroup { get; set; } = "Geral";
+        public string ClientGroup
+        {
+            get => _clientGroup;
+            set
+            {
+                if (_clientGroup != value)
+                {
+                    _clientGroup = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(SubtitleText));
+                }
+            }
+        }
 
         [JsonPropertyName("department")]
-        public string Department { get; set; } = "Geral";
+        public string Department
+        {
+            get => _department;
+            set
+            {
+                if (_department != value)
+                {
+                    _department = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(SubtitleText));
+                }
+            }
+        }
 
         [JsonPropertyName("notes")]
-        public string? Notes { get; set; }
+        public string? Notes
+        {
+            get => _notes;
+            set { if (_notes != value) { _notes = value; OnPropertyChanged(); } }
+        }
 
         [JsonPropertyName("is_favorite")]
-        public bool IsFavorite { get; set; }
+        public bool IsFavorite
+        {
+            get => _isFavorite;
+            set
+            {
+                if (_isFavorite != value)
+                {
+                    _isFavorite = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(FavoriteIcon));
+                    OnPropertyChanged(nameof(FavoriteColor));
+                }
+            }
+        }
 
         [JsonPropertyName("is_online")]
-        public bool IsOnline { get; set; }
+        public bool IsOnline
+        {
+            get => _isOnline;
+            set
+            {
+                if (_isOnline != value)
+                {
+                    _isOnline = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(StatusColor));
+                    OnPropertyChanged(nameof(StatusBadgeBg));
+                    OnPropertyChanged(nameof(StatusText));
+                    OnPropertyChanged(nameof(StatusShortText));
+                    OnPropertyChanged(nameof(FormattedLastSeen));
+                }
+            }
+        }
 
         [JsonPropertyName("is_busy")]
-        public bool IsBusy { get; set; }
+        public bool IsBusy
+        {
+            get => _isBusy;
+            set
+            {
+                if (_isBusy != value)
+                {
+                    _isBusy = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(StatusColor));
+                    OnPropertyChanged(nameof(StatusBadgeBg));
+                    OnPropertyChanged(nameof(StatusText));
+                    OnPropertyChanged(nameof(StatusShortText));
+                }
+            }
+        }
 
         [JsonPropertyName("busy_by")]
-        public string? BusyBy { get; set; }
+        public string? BusyBy
+        {
+            get => _busyBy;
+            set
+            {
+                if (_busyBy != value)
+                {
+                    _busyBy = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(StatusText));
+                    OnPropertyChanged(nameof(StatusShortText));
+                }
+            }
+        }
 
         [JsonPropertyName("logged_in_user")]
-        public string? LoggedInUser { get; set; }
+        public string? LoggedInUser
+        {
+            get => _loggedInUser;
+            set
+            {
+                if (_loggedInUser != value)
+                {
+                    _loggedInUser = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(SubtitleText));
+                }
+            }
+        }
 
         [JsonPropertyName("os_version")]
-        public string? OsVersion { get; set; }
+        public string? OsVersion
+        {
+            get => _osVersion;
+            set
+            {
+                if (_osVersion != value)
+                {
+                    _osVersion = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(OsAndIpText));
+                }
+            }
+        }
 
         [JsonPropertyName("ip_address")]
-        public string? IpAddress { get; set; }
+        public string? IpAddress
+        {
+            get => _ipAddress;
+            set
+            {
+                if (_ipAddress != value)
+                {
+                    _ipAddress = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(OsAndIpText));
+                }
+            }
+        }
 
         [JsonPropertyName("last_seen_at")]
-        public DateTime LastSeenAt { get; set; }
+        public DateTime LastSeenAt
+        {
+            get => _lastSeenAt;
+            set
+            {
+                if (_lastSeenAt != value)
+                {
+                    _lastSeenAt = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(FormattedLastSeen));
+                }
+            }
+        }
 
         // Propriedades calculadas para exibição rápida e virtualizada
         public string DisplayName => !string.IsNullOrWhiteSpace(Alias) ? Alias : Hostname;
 
+        public string FavoriteIcon => IsFavorite ? "★" : "☆";
+
+        public string FavoriteColor => IsFavorite ? "#F2CC60" : "#6B7280";
+
         public string StatusColor => !IsOnline ? "#8B949E" : (IsBusy ? "#F2CC60" : "#00E5A3");
 
-        public string StatusBadgeBg => !IsOnline ? "#1B2028" : (IsBusy ? "#342811" : "#0A291E");
+        public string StatusBadgeBg => !IsOnline ? "#161B22" : (IsBusy ? "#342811" : "#0A291E");
 
         public string StatusText => !IsOnline ? "Offline" : (IsBusy ? $"Em Atendimento ({BusyBy})" : "Online / Disponível");
 
         public string StatusShortText => !IsOnline ? "Offline" : (IsBusy ? $"Ocupado ({BusyBy})" : "Online");
+
+        public string FormattedRustdeskId
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(RustdeskId)) return "---";
+                if (RustdeskId.Length == 9)
+                {
+                    return $"{RustdeskId.Substring(0, 3)} {RustdeskId.Substring(3, 3)} {RustdeskId.Substring(6, 3)}";
+                }
+                if (RustdeskId.Length == 10)
+                {
+                    return $"{RustdeskId.Substring(0, 3)} {RustdeskId.Substring(3, 3)} {RustdeskId.Substring(6, 4)}";
+                }
+                return RustdeskId;
+            }
+        }
+
+        public string FormattedLastSeen
+        {
+            get
+            {
+                if (IsOnline) return "Ativo agora";
+                var local = LastSeenAt.ToLocalTime();
+                var diff = DateTime.Now - local;
+                if (diff.TotalMinutes < 1) return "Há instantes";
+                if (diff.TotalMinutes < 60) return $"Há {(int)diff.TotalMinutes} min";
+                if (diff.TotalHours < 24) return $"Há {(int)diff.TotalHours} h";
+                return local.ToString("dd/MM HH:mm");
+            }
+        }
 
         public string SubtitleText
         {
@@ -140,5 +373,7 @@ namespace BipDesk.Tech.Models
 
         [JsonPropertyName("is_active")]
         public bool IsActive { get; set; }
+
+        public string RoleBadge => Role == "admin" ? "Admin" : "Técnico";
     }
 }

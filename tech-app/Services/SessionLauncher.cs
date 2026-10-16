@@ -103,6 +103,30 @@ namespace BipDesk.Tech.Services
             }
         }
 
+        public async Task<Process?> LaunchDirectSessionAsync(string rustdeskId, Action<string>? statusCallback = null)
+        {
+            try
+            {
+                var exePath = await EnsureSessionExecutableAsync(statusCallback);
+                var serverKey = Environment.GetEnvironmentVariable("BIPDESK_SERVER_KEY") ?? "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw=";
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = exePath,
+                    Arguments = $"--connect {rustdeskId} --server bipdesk.duckdns.org --key {serverKey}",
+                    UseShellExecute = false,
+                    CreateNoWindow = false
+                };
+
+                return Process.Start(startInfo);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SessionLauncher] Erro ao iniciar sessão direta: {ex.Message}");
+                return null;
+            }
+        }
+
         public void BringToFront(Process process)
         {
             try
