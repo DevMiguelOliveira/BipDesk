@@ -59,7 +59,7 @@ namespace BipDesk.Tech.Services
             return null;
         }
 
-        public static async Task<IntPtr> WaitForSessionWindowAsync(int timeoutMs = 10000)
+        public static async Task<IntPtr> WaitForSessionWindowAsync(int timeoutMs = 15000)
         {
             var end = DateTime.UtcNow.AddMilliseconds(timeoutMs);
             while (DateTime.UtcNow < end)
@@ -67,21 +67,19 @@ namespace BipDesk.Tech.Services
                 IntPtr found = IntPtr.Zero;
                 EnumWindows((hwnd, lParam) =>
                 {
-                    if (IsWindowVisible(hwnd))
+                    var sb = new StringBuilder(256);
+                    GetClassName(hwnd, sb, sb.Capacity);
+                    var className = sb.ToString();
+                    if (className == "RustdeskMultiWindow" || className.Contains("RustdeskMultiWindow"))
                     {
-                        var sb = new StringBuilder(256);
-                        GetClassName(hwnd, sb, sb.Capacity);
-                        if (sb.ToString() == "RustdeskMultiWindow")
-                        {
-                            found = hwnd;
-                            return false;
-                        }
+                        found = hwnd;
+                        return false;
                     }
                     return true;
                 }, IntPtr.Zero);
 
                 if (found != IntPtr.Zero) return found;
-                await Task.Delay(250);
+                await Task.Delay(200);
             }
             return IntPtr.Zero;
         }
@@ -287,7 +285,7 @@ key = '{serverKey}'
                 {
                     try
                     {
-                        var hwnd = await WaitForSessionWindowAsync(10000);
+                        var hwnd = await WaitForSessionWindowAsync(15000);
                         if (hwnd != IntPtr.Zero)
                         {
                             session.WindowHandle = hwnd;

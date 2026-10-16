@@ -392,9 +392,10 @@ def get_connect_ticket(machine_id: int, force: bool = False, current_user: User 
     )
 
 @app.post("/api/machines/{machine_id}/disconnect")
+@app.post("/api/machines/{machine_id}/release")
 def release_session(machine_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     machine = db.query(Machine).filter(Machine.id == machine_id).first()
-    if machine and machine.current_session_tech == current_user.username:
+    if machine and (machine.current_session_tech == current_user.username or current_user.role == "admin"):
         machine.current_session_tech = None
         machine.session_started_at = None
         db.commit()

@@ -40,6 +40,10 @@ namespace BipDesk.Tech.Views
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern bool SetWindowText(IntPtr hWnd, string lpString);
 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
         private readonly IntPtr _childHwnd;
         private bool _isDisposed;
 
@@ -75,6 +79,9 @@ namespace BipDesk.Tech.Views
         {
             if (_childHwnd != IntPtr.Zero)
             {
+                // Esconde brevemente para desregistrar da barra de tarefas de forma imperceptível
+                ShowWindow(_childHwnd, 0 /* SW_HIDE */);
+
                 // Transforma a janela RustDesk em controle filho integrado (WS_CHILD) e remove bordas de popup e botões de janela nativos
                 var style = GetWindowLong(_childHwnd, GWL_STYLE);
                 style = (style & ~WS_POPUP & ~WS_CAPTION & ~WS_THICKFRAME & ~WS_MINIMIZEBOX & ~WS_MAXIMIZEBOX) | WS_CHILD;
@@ -94,6 +101,7 @@ namespace BipDesk.Tech.Views
 
                 SetWindowPos(_childHwnd, IntPtr.Zero, 0, 0, width, height,
                     SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+                ShowWindow(_childHwnd, 5 /* SW_SHOW */);
             }
 
             return new HandleRef(this, _childHwnd);
@@ -107,6 +115,16 @@ namespace BipDesk.Tech.Views
                 try
                 {
                     PostMessage(_childHwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+                }
+                catch { }
+            }
+            else if (!_isDisposed && _childHwnd != IntPtr.Zero)
+            {
+                // Desacopla temporariamente da hierarquia para prevenir que o Windows destrua a janela durante re-layout ou troca de abas
+                try
+                {
+                    SetParent(_childHwnd, IntPtr.Zero);
+                    ShowWindow(_childHwnd, 0 /* SW_HIDE */);
                 }
                 catch { }
             }
