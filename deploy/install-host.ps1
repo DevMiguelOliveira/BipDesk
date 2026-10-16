@@ -126,63 +126,140 @@ function Get-CleanRustdeskId {
     if (-not $RawText) { return "" }
     $lines = ($RawText -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
     
-    # 1. Procurar linha de baixo para cima com estritamente dígitos (6 a 16 dígitos)
+    # 1. Linha estritamente de dígitos (6 a 16 dígitos)
     for ($i = $lines.Count - 1; $i -ge 0; $i--) {
         if ($lines[$i] -match '^\d{6,16}$') {
             return $lines[$i]
         }
     }
-    # 2. Procurar padrão de dígitos isolados no final
+    # 2. Padrão de dígitos isolados (ignorando logs de compilação ou diagnóstico)
     for ($i = $lines.Count - 1; $i -ge 0; $i--) {
-        if ($lines[$i] -match '\b(\d{6,16})\b') {
+        if ($lines[$i] -match '\b(\d{6,16})\b' -and $lines[$i] -notmatch 'skip|version|error|warn|info|debug') {
             return $matches[1]
         }
     }
     return ""
 }
 
-# 5. Obter ID do BipDesk
-Write-Host "[4/5] Identificando ID da máquina..." -ForegroundColor Green
-$MachineId = ""
-for ($i = 0; $i -lt 15; $i++) {
-    $rawOut = (& $SessionExe --get-id 2>&1 | Out-String)
-    $clean = Get-CleanRustdeskId -RawText $rawOut
-    if ($clean -and $clean.Length -ge 6) {
-        $MachineId = $clean
-        break
-    }
-    Start-Sleep -Seconds 1
-}
+function Get-RustDeskRealId {
+    param([string]$SessionExe)
 
-if (-not $MachineId) {
-    $RustDeskInstalled = "C:\Program Files\RustDesk\RustDesk.exe"
-    if (Test-Path $RustDeskInstalled) {
-        $rawOut2 = (& $RustDeskInstalled --get-id 2>&1 | Out-String)
-        $clean2 = Get-CleanRustdeskId -RawText $rawOut2
-        if ($clean2 -and $clean2.Length -ge 6) {
-            $MachineId = $clean2
-        }
-    }
-}
-
-if (-not $MachineId) {
-    # Fallback: tentar ler a chave 'id =' do arquivo de configuração oficial (NUNCA 'remote_id')
-    $ConfigPaths = @(
-        "$env:APPDATA\RustDesk\config\RustDesk.toml",
-        "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk.toml",
-        "C:\Windows\System32\config\systemprofile\AppData\Roaming\RustDesk\config\RustDesk.toml",
-        "$env:APPDATA\BipDesk\config\BipDesk.toml"
+    # 1. Candidatos a executável do motor nativo
+    $candidateExes = @(
+        "C:\Program Files\RustDesk\RustDesk.exe",
+        "C:\Program Files\BipDesk\rustdesk.exe",
+        "$env:LOCALAPPDATA\rustdesk\rustdesk.exe"
     )
-    foreach ($cfg in $ConfigPaths) {
-        if (Test-Path $cfg) {
-            $content = Get-Content $cfg -Raw -ErrorAction SilentlyContinue
-            if ($content -match '(?m)^id\s*=\s*[''"](\d{6,16})[''"]') {
-                $MachineId = $matches[1]
-                break
+    $candidateExes += (Get-ChildItem -Path "C:\Users\*\AppData\Local\rustdesk\rustdesk.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+
+    # 2. Se o executável descompactado ainda não existe, executa brevemente o SessionExe para extrair
+    $engineExe = $candidateExes | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $engineExe -and (Test-Path $SessionExe)) {
+        Start-Process -FilePath $SessionExe -ArgumentList "--get-id" -WindowStyle Hidden -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        $candidateExes += (Get-ChildItem -Path "C:\Users\*\AppData\Local\rustdesk\rustdesk.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+        $engineExe = $candidateExes | Where-Object { Test-Path $_ } | Select-Object -First 1
+    }
+
+    # Copia o motor nativo descompactado para C:\Program Files\RustDesk
+    if ($engineExe -and (Test-Path $engineExe)) {
+        try {
+            $engineDir = Split-Path -Path $engineExe -Parent
+            $destDir = "C:\Program Files\RustDesk"
+            if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+            Copy-Item -Path "$engineDir\*" -Destination $destDir -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+        } catch {}
+    }
+
+    # Garante que o serviço RustDesk está em execução
+    $svc = Get-Service -Name "RustDesk" -ErrorAction SilentlyContinue
+    if ($svc -and $svc.Status -ne 'Running') {
+        Start-Service -Name "RustDesk" -ErrorAction SilentlyContinue
+    }
+
+    $allExes = @(
+        "C:\Program Files\RustDesk\RustDesk.exe",
+        "C:\Program Files\BipDesk\rustdesk.exe",
+        "$env:LOCALAPPDATA\rustdesk\rustdesk.exe"
+    )
+    $allExes += (Get-ChildItem -Path "C:\Users\*\AppData\Local\rustdesk\rustdesk.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+    $allExes += $SessionExe
+
+    # 3. Tenta obter o ID via --get-id em todos os executáveis candidatos
+    for ($round = 0; $round -lt 15; $round++) {
+        foreach ($exe in $allExes) {
+            if ($exe -and (Test-Path $exe)) {
+                try {
+                    $outText = (& $exe --get-id 2>&1 | Out-String)
+                    $clean = Get-CleanRustdeskId -RawText $outText
+                    if ($clean -and $clean.Length -ge 6) {
+                        return $clean
+                    }
+                } catch {}
             }
         }
+
+        # 4. Busca nos logs por 'Generated id (\d+)'
+        $logDirs = @(
+            "C:\Windows\System32\config\systemprofile\AppData\Roaming\RustDesk\log",
+            "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\log",
+            "$env:APPDATA\RustDesk\log"
+        )
+        $logDirs += (Get-ChildItem -Path "C:\Users\*\AppData\Roaming\RustDesk\log" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+
+        foreach ($ld in $logDirs) {
+            if ($ld -and (Test-Path $ld)) {
+                $logFiles = Get-ChildItem -Path $ld -Filter "*.log" -Recurse -ErrorAction SilentlyContinue
+                foreach ($lf in $logFiles) {
+                    try {
+                        $txt = Get-Content -Path $lf.FullName -Raw -ErrorAction SilentlyContinue
+                        if ($txt -match 'Generated id (\d{6,16})') {
+                            return $matches[1]
+                        }
+                    } catch {}
+                }
+            }
+        }
+
+        # 5. Busca nas configurações por 'id = "..."' ou 'id = ''...'''
+        $cfgDirs = @(
+            "C:\Windows\System32\config\systemprofile\AppData\Roaming\RustDesk\config",
+            "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config",
+            "$env:APPDATA\RustDesk\config"
+        )
+        $cfgDirs += (Get-ChildItem -Path "C:\Users\*\AppData\Roaming\RustDesk\config" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+
+        foreach ($cd in $cfgDirs) {
+            if ($cd -and (Test-Path $cd)) {
+                $cfgFiles = Get-ChildItem -Path $cd -Filter "*.toml" -ErrorAction SilentlyContinue
+                foreach ($cf in $cfgFiles) {
+                    try {
+                        $txt = Get-Content -Path $cf.FullName -Raw -ErrorAction SilentlyContinue
+                        if ($txt -match '(?m)^id\s*=\s*[''"](\d{6,16})[''"]') {
+                            return $matches[1]
+                        }
+                    } catch {}
+                }
+            }
+        }
+
+        # Se ainda não gerou, executa o motor brevemente como servidor por 2 segundos para forçar o handshake com HBBS
+        if ($round -eq 2 -and $engineExe -and (Test-Path $engineExe)) {
+            $p = Start-Process -FilePath $engineExe -ArgumentList "--server" -PassThru -WindowStyle Hidden -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+            if ($p -and -not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+        }
+
+        Start-Sleep -Seconds 1
     }
+
+    return ""
 }
+
+# 5. Obter ID do BipDesk
+Write-Host "[4/5] Identificando ID da máquina..." -ForegroundColor Green
+$MachineId = Get-RustDeskRealId -SessionExe $SessionExe
+
 
 # 6. Registrar Máquina na API (Enroll)
 Write-Host "[5/5] Registrando no painel BipDesk Admin..." -ForegroundColor Green
