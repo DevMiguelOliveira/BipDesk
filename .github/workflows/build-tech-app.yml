@@ -34,7 +34,7 @@ jobs:
           } catch {
             Write-Warning "Servidor offline durante empacotamento do bundle, incluindo apenas o executável..."
           }
-          mkdir -p ./dist/bundle
+          New-Item -ItemType Directory -Force -Path "./dist/bundle" | Out-Null
           Copy-Item ./dist/admin/* ./dist/bundle/ -Recurse -Force
           Compress-Archive -Path ./dist/bundle/* -DestinationPath ./dist/BipDesk_Admin_Completo.zip -Force
 

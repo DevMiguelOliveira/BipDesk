@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
@@ -92,23 +93,34 @@ namespace BipDesk.Tech.ViewModels
             else
             {
                 // Tenta login automático apenas se houver credenciais salvas
-                var savedUser = System.IO.File.ReadAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BipDesk", "credentials.txt"));
-                if (!string.IsNullOrEmpty(savedUser))
+                var credPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BipDesk", "credentials.txt");
+                if (File.Exists(credPath))
                 {
-                    var parts = savedUser.Split('|');
-                    if (parts.Length == 2)
+                    try
                     {
-                        bool logged = await _api.LoginAsync(parts[0], parts[1]);
-                        if (logged)
+                        var savedUser = File.ReadAllText(credPath);
+                        if (!string.IsNullOrEmpty(savedUser))
                         {
-                            ConnectionStatus = "Nuvem Conectada";
-                            ConnectionStatusColor = "#00E5A3";
-                            await LoadDataAsync();
-                            _pollTimer.Start();
-                            _ = CheckForUpdatesAsync(false);
-                            IsLoading = false;
-                            return;
+                            var parts = savedUser.Split('|');
+                            if (parts.Length == 2)
+                            {
+                                bool logged = await _api.LoginAsync(parts[0], parts[1]);
+                                if (logged)
+                                {
+                                    ConnectionStatus = "Nuvem Conectada";
+                                    ConnectionStatusColor = "#00E5A3";
+                                    await LoadDataAsync();
+                                    _pollTimer.Start();
+                                    _ = CheckForUpdatesAsync(false);
+                                    IsLoading = false;
+                                    return;
+                                }
+                            }
                         }
+                    }
+                    catch
+                    {
+                        // Ignora falha de leitura
                     }
                 }
                 ConnectionStatus = "Falha na conexão com a nuvem";
