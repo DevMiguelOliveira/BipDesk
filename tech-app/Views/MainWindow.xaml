@@ -474,7 +474,7 @@
                                                 <Setter TargetName="rowBorder" Property="Background" Value="{StaticResource BrushSurfaceHover}"/>
                                             </Trigger>
                                             <Trigger Property="IsSelected" Value="True">
-                                                <Setter TargetName="rowBorder" Property="Background" Value="#0F241C"/>
+                                                <Setter TargetName="rowBorder" Property="Background" Value="{StaticResource BrushEmeraldBg}"/>
                                             </Trigger>
                                         </ControlTemplate.Triggers>
                                     </ControlTemplate>

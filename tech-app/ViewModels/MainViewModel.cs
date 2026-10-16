@@ -92,7 +92,7 @@ namespace BipDesk.Tech.ViewModels
             if (!string.IsNullOrWhiteSpace(_api.CurrentUsername) && (_api.CurrentUsername != "admin" || !string.IsNullOrWhiteSpace(_api.CurrentFullName)))
             {
                 ConnectionStatus = "Nuvem Conectada";
-                ConnectionStatusColor = "#00E5A3";
+                ConnectionStatusColor = "#22C55E";
                 await LoadDataAsync();
                 _pollTimer.Start();
                 _ = CheckForUpdatesAsync(false);
@@ -115,7 +115,7 @@ namespace BipDesk.Tech.ViewModels
                                 if (logged)
                                 {
                                     ConnectionStatus = "Nuvem Conectada";
-                                    ConnectionStatusColor = "#00E5A3";
+                                    ConnectionStatusColor = "#22C55E";
                                     await LoadDataAsync();
                                     _pollTimer.Start();
                                     _ = CheckForUpdatesAsync(false);
@@ -131,7 +131,7 @@ namespace BipDesk.Tech.ViewModels
                     }
                 }
                 ConnectionStatus = "Falha na conexão com a nuvem";
-                ConnectionStatusColor = "#F8514F";
+                ConnectionStatusColor = "#EF4444";
             }
             IsLoading = false;
         }

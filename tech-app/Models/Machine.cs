@@ -275,11 +275,11 @@ namespace BipDesk.Tech.Models
 
         public string FavoriteIcon => IsFavorite ? "★" : "☆";
 
-        public string FavoriteColor => IsFavorite ? "#F2CC60" : "#6B7280";
+        public string FavoriteColor => IsFavorite ? "#FBBF24" : "#64748B";
 
-        public string StatusColor => !IsOnline ? "#8B949E" : (IsBusy ? "#F2CC60" : "#00E5A3");
+        public string StatusColor => !IsOnline ? "#94A3B8" : (IsBusy ? "#FBBF24" : "#22C55E");
 
-        public string StatusBadgeBg => !IsOnline ? "#161B22" : (IsBusy ? "#342811" : "#0A291E");
+        public string StatusBadgeBg => !IsOnline ? "#222935" : (IsBusy ? "#2D2311" : "#132B1E");
 
         public string StatusText => !IsOnline ? "Offline" : (IsBusy ? $"Em Atendimento ({BusyBy})" : "Online / Disponível");
 

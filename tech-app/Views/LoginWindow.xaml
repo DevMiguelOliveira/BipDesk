@@ -24,11 +24,11 @@
         <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,0,0,22">
             <!-- Vector Monitor + Lightning Badge (Sem pixelização ou desfoque) -->
             <Border Width="62" Height="62" CornerRadius="18" Margin="0,0,0,12" HorizontalAlignment="Center" 
-                    BorderThickness="1.5" BorderBrush="#4000E5A3">
+                    BorderThickness="1.5" BorderBrush="#503B82F6">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                        <GradientStop Color="#0D3528" Offset="0.0"/>
-                        <GradientStop Color="#061711" Offset="1.0"/>
+                        <GradientStop Color="#1E293B" Offset="0.0"/>
+                        <GradientStop Color="#0F172A" Offset="1.0"/>
                     </LinearGradientBrush>
                 </Border.Background>
                 <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
