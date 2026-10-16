@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -65,6 +66,12 @@ namespace BipDesk.Tech.ViewModels
             RebootCommand = new RelayCommand(async p => await RebootMachineAsync(p as Machine ?? SelectedMachine));
             SendMessageCommand = new RelayCommand(async p => await SendMessageToUserAsync(p as Machine ?? SelectedMachine));
             RestartSpoolerCommand = new RelayCommand(async p => await RestartSpoolerAsync(p as Machine ?? SelectedMachine));
+            FlushDnsCommand = new RelayCommand(async p => await FlushDnsAsync(p as Machine ?? SelectedMachine));
+            RenewIpCommand = new RelayCommand(async p => await RenewIpAsync(p as Machine ?? SelectedMachine));
+            LockWorkstationCommand = new RelayCommand(async p => await LockWorkstationAsync(p as Machine ?? SelectedMachine));
+            GpUpdateCommand = new RelayCommand(async p => await GpUpdateAsync(p as Machine ?? SelectedMachine));
+            PingMachineCommand = new RelayCommand(async p => await PingMachineAsync(p as Machine ?? SelectedMachine));
+            CopySummaryCommand = new RelayCommand(p => CopyMachineSummary(p as Machine ?? SelectedMachine));
 
             // Conexão Rápida e Ações Auxiliares (Estilo TeamViewer)
             QuickConnectCommand = new RelayCommand(async _ => await QuickConnectAsync());
@@ -319,6 +326,12 @@ namespace BipDesk.Tech.ViewModels
         public ICommand RebootCommand { get; }
         public ICommand SendMessageCommand { get; }
         public ICommand RestartSpoolerCommand { get; }
+        public ICommand FlushDnsCommand { get; }
+        public ICommand RenewIpCommand { get; }
+        public ICommand LockWorkstationCommand { get; }
+        public ICommand GpUpdateCommand { get; }
+        public ICommand PingMachineCommand { get; }
+        public ICommand CopySummaryCommand { get; }
         public ICommand AddNoteCommand { get; }
         public ICommand ApplyUpdateCommand { get; }
         public ICommand CheckUpdateCommand { get; }
@@ -718,6 +731,119 @@ namespace BipDesk.Tech.ViewModels
                 {
                     MessageBox.Show("Falha ao enviar mensagem.", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
+            }
+        }
+
+        private async Task FlushDnsAsync(Machine? machine)
+        {
+            if (machine == null) return;
+            bool ok = await _api.SendCommandAsync(machine.Id, "flush_dns");
+            if (ok)
+            {
+                ShowNotification($"Comando para limpar cache DNS enviado para {machine.DisplayName}.");
+            }
+            else
+            {
+                MessageBox.Show("Falha ao enviar comando.", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async Task RenewIpAsync(Machine? machine)
+        {
+            if (machine == null) return;
+            bool ok = await _api.SendCommandAsync(machine.Id, "renew_ip");
+            if (ok)
+            {
+                ShowNotification($"Comando para renovar IP (DHCP) enviado para {machine.DisplayName}.");
+            }
+            else
+            {
+                MessageBox.Show("Falha ao enviar comando.", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async Task LockWorkstationAsync(Machine? machine)
+        {
+            if (machine == null) return;
+            bool ok = await _api.SendCommandAsync(machine.Id, "lock_workstation");
+            if (ok)
+            {
+                ShowNotification($"Comando para bloquear estação de trabalho enviado para {machine.DisplayName}.");
+            }
+            else
+            {
+                MessageBox.Show("Falha ao enviar comando.", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async Task GpUpdateAsync(Machine? machine)
+        {
+            if (machine == null) return;
+            bool ok = await _api.SendCommandAsync(machine.Id, "gpupdate");
+            if (ok)
+            {
+                ShowNotification($"Comando gpupdate /force enviado para {machine.DisplayName}.");
+            }
+            else
+            {
+                MessageBox.Show("Falha ao enviar comando.", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void CopyMachineSummary(Machine? machine)
+        {
+            if (machine == null) machine = SelectedMachine;
+            if (machine == null) return;
+
+            var summary = $"[BipDesk Suporte Técnico]\n" +
+                          $"Dispositivo: {machine.DisplayName} ({machine.Hostname})\n" +
+                          $"ID BipDesk: {machine.FormattedRustdeskId}\n" +
+                          $"Endereço IP: {machine.IpAddress ?? "N/D"}\n" +
+                          $"Usuário Ativo: {machine.LoggedInUser ?? "Sem usuário"}\n" +
+                          $"Sistema: {machine.OsVersion ?? "Windows"}\n" +
+                          $"Empresa / Setor: {machine.ClientGroup} - {machine.Department}\n" +
+                          $"Status: {machine.StatusText} (Último visto: {machine.FormattedLastSeen})";
+
+            try
+            {
+                Clipboard.SetText(summary);
+                ShowNotification("Dados completos do dispositivo copiados para o chamado!");
+            }
+            catch (Exception ex)
+            {
+                ShowNotification($"Erro ao copiar dados: {ex.Message}");
+            }
+        }
+
+        private async Task PingMachineAsync(Machine? machine)
+        {
+            if (machine == null) machine = SelectedMachine;
+            if (machine == null) return;
+
+            var ip = machine.IpAddress;
+            if (string.IsNullOrWhiteSpace(ip) || ip == "N/D")
+            {
+                ShowNotification("Endereço IP não informado para este dispositivo.");
+                return;
+            }
+
+            try
+            {
+                ShowNotification($"Testando ping para {ip}...");
+                using var ping = new Ping();
+                var reply = await ping.SendPingAsync(ip, 2000);
+                if (reply.Status == IPStatus.Success)
+                {
+                    ShowNotification($"Ping para {ip}: {reply.RoundtripTime}ms (Respondendo!)");
+                }
+                else
+                {
+                    ShowNotification($"Ping para {ip}: {reply.Status} (Sem resposta direta)");
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowNotification($"Erro ao testar conectividade: {ex.Message}");
             }
         }
 

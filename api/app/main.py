@@ -340,7 +340,7 @@ def update_machine(machine_id: int, req: MachineUpdateRequest, current_user: Use
     return {"status": "success"}
 
 @app.delete("/api/machines/{machine_id}")
-def delete_machine(machine_id: int, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
+def delete_machine(machine_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     machine = db.query(Machine).filter(Machine.id == machine_id).first()
     if not machine:
         raise HTTPException(status_code=404, detail="Máquina não encontrada")

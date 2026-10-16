@@ -12,6 +12,56 @@
         Foreground="{StaticResource BrushTextPrimary}"
         KeyDown="Window_KeyDown">
 
+    <Window.Resources>
+        <ContextMenu x:Key="MachineContextMenu">
+            <MenuItem Header="⚡ Iniciar Acesso Remoto (Enter)" FontWeight="Bold"
+                      Command="{Binding DataContext.ConnectCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}"/>
+            <Separator/>
+            <MenuItem Header="📋 Copiar ID BipDesk"
+                      Command="{Binding DataContext.CopyIdCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding RustdeskId}"/>
+            <MenuItem Header="🌐 Copiar Endereço IP"
+                      Command="{Binding DataContext.CopyIpCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding IpAddress}"/>
+            <MenuItem Header="📝 Copiar Dados para Chamado"
+                      Command="{Binding DataContext.CopySummaryCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}"/>
+            <MenuItem Header="📶 Testar Latência (Ping)"
+                      Command="{Binding DataContext.PingMachineCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}"/>
+            <MenuItem Header="⭐ Alternar Favorito"
+                      Command="{Binding DataContext.ToggleFavoriteCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}"/>
+            <Separator/>
+            <MenuItem Header="💬 Enviar Mensagem na Tela..."
+                      Command="{Binding DataContext.SendMessageCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}"/>
+            <MenuItem Header="🖨️ Reiniciar Spooler de Impressão"
+                      Command="{Binding DataContext.RestartSpoolerCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}"/>
+            <MenuItem Header="🧹 Limpar Cache DNS (Flush DNS)"
+                      Command="{Binding DataContext.FlushDnsCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}"/>
+            <MenuItem Header="🔄 Renovar Configuração IP (DHCP)"
+                      Command="{Binding DataContext.RenewIpCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}"/>
+            <MenuItem Header="🔒 Bloquear Sessão do Windows"
+                      Command="{Binding DataContext.LockWorkstationCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}"/>
+            <MenuItem Header="⚙️ Atualizar Políticas GPO (gpupdate)"
+                      Command="{Binding DataContext.GpUpdateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}"/>
+            <MenuItem Header="🔄 Reiniciar Computador Silenciosamente..."
+                      Command="{Binding DataContext.RebootCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}"/>
+            <Separator/>
+            <MenuItem Header="🗑️ Desvincular e Remover Máquina..." Style="{StaticResource DangerMenuItemStyle}"
+                      Command="{Binding DataContext.DeleteMachineCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}"/>
+        </ContextMenu>
+    </Window.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <!-- Topbar Navigation & Quick Connect -->
@@ -339,7 +389,8 @@
                             <!-- MACHINE CARD -->
                             <Border Width="280" Height="200" Background="{StaticResource BrushSurface}" 
                                     BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" 
-                                    CornerRadius="10" Padding="14" MouseDown="Card_MouseDown">
+                                    CornerRadius="10" Padding="14" MouseDown="Card_MouseDown"
+                                    ContextMenu="{StaticResource MachineContextMenu}">
                                 <Border.Style>
                                     <Style TargetType="Border">
                                         <Style.Triggers>
@@ -466,7 +517,8 @@
                             <Setter Property="Template">
                                 <Setter.Value>
                                     <ControlTemplate TargetType="ListBoxItem">
-                                        <Border x:Name="rowBorder" Background="{TemplateBinding Background}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,0,0,1" Padding="14,8">
+                                        <Border x:Name="rowBorder" Background="{TemplateBinding Background}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,0,0,1" Padding="14,8"
+                                                MouseDown="Row_MouseDown" ContextMenu="{StaticResource MachineContextMenu}">
                                             <ContentPresenter/>
                                         </Border>
                                         <ControlTemplate.Triggers>
@@ -657,19 +709,42 @@
                                     Command="{Binding DataContext.ConnectCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                     CommandParameter="{Binding}"/>
 
-                            <!-- Ações Remotas Silenciosas -->
-                            <TextBlock Text="COMANDOS RÁPIDOS" FontSize="10" FontWeight="Bold" Foreground="{StaticResource BrushTextMuted}" Margin="0,0,0,6"/>
-                            <UniformGrid Columns="3" Margin="0,0,0,14">
-                                <Button Content="💬 Mensagem" Style="{StaticResource InfoButtonStyle}" Margin="0,0,3,0"
+                            <!-- Ações Remotas e Diagnóstico -->
+                            <TextBlock Text="COMANDOS RÁPIDOS HELPDESK" FontSize="10" FontWeight="Bold" Foreground="{StaticResource BrushTextMuted}" Margin="0,0,0,6"/>
+                            <UniformGrid Columns="3" Margin="0,0,0,6">
+                                <Button Content="💬 Mensagem" Style="{StaticResource InfoButtonStyle}" Margin="0,0,2,3" ToolTip="Exibir aviso na tela do usuário"
                                         Command="{Binding DataContext.SendMessageCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                         CommandParameter="{Binding}"/>
-                                <Button Content="🖨️ Spooler" Style="{StaticResource InfoButtonStyle}" Margin="2,0,2,0"
+                                <Button Content="🖨️ Spooler" Style="{StaticResource InfoButtonStyle}" Margin="2,0,2,3" ToolTip="Reiniciar serviço de impressão"
                                         Command="{Binding DataContext.RestartSpoolerCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                         CommandParameter="{Binding}"/>
-                                <Button Content="🔄 Reiniciar" Style="{StaticResource WarningButtonStyle}" Margin="3,0,0,0"
+                                <Button Content="🧹 Flush DNS" Style="{StaticResource InfoButtonStyle}" Margin="2,0,0,3" ToolTip="Limpar cache DNS da máquina"
+                                        Command="{Binding DataContext.FlushDnsCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}"/>
+                                <Button Content="🌐 Renovar IP" Style="{StaticResource InfoButtonStyle}" Margin="0,3,2,0" ToolTip="Renovar concessão DHCP (ipconfig /renew)"
+                                        Command="{Binding DataContext.RenewIpCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}"/>
+                                <Button Content="🔒 Bloquear" Style="{StaticResource InfoButtonStyle}" Margin="2,3,2,0" ToolTip="Bloquear sessão do Windows"
+                                        Command="{Binding DataContext.LockWorkstationCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}"/>
+                                <Button Content="🔄 Reiniciar" Style="{StaticResource WarningButtonStyle}" Margin="2,3,0,0" ToolTip="Reiniciar computador"
                                         Command="{Binding DataContext.RebootCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                         CommandParameter="{Binding}"/>
                             </UniformGrid>
+
+                            <!-- Ações Rápidas de Atendimento -->
+                            <Grid Margin="0,0,0,14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Content="📋 Dados p/ Chamado" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,3,0" ToolTip="Copiar resumo completo para colar em ticket"
+                                        Command="{Binding DataContext.CopySummaryCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}"/>
+                                <Button Grid.Column="1" Content="📶 Testar Ping" Style="{StaticResource SecondaryButtonStyle}" Margin="3,0,0,0" ToolTip="Testar conectividade e tempo de resposta"
+                                        Command="{Binding DataContext.PingMachineCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}"/>
+                            </Grid>
 
                             <Separator Background="{StaticResource BrushBorder}" Margin="0,0,0,12"/>
 
@@ -693,6 +768,9 @@
                                     <Button Content="📋" Style="{StaticResource IconButtonStyle}" FontSize="9" Margin="4,0,0,0" ToolTip="Copiar IP"
                                             Command="{Binding DataContext.CopyIpCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                             CommandParameter="{Binding IpAddress}"/>
+                                    <Button Content="📶" Style="{StaticResource IconButtonStyle}" FontSize="9" Margin="2,0,0,0" ToolTip="Testar Ping"
+                                            Command="{Binding DataContext.PingMachineCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}"/>
                                 </StackPanel>
                             </Grid>
 
@@ -749,6 +827,13 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
+
+                            <!-- Botão Destacado de Desvincular e Remover Máquina -->
+                            <Separator Background="{StaticResource BrushBorder}" Margin="0,12,0,12"/>
+                            <Button Content="🗑️ Desvincular e Remover Dispositivo do Painel" Style="{StaticResource WarningButtonStyle}"
+                                    HorizontalAlignment="Stretch" Padding="10,8" Margin="0,0,0,16" ToolTip="Remove o dispositivo da nuvem do BipDesk"
+                                    Command="{Binding DataContext.DeleteMachineCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    CommandParameter="{Binding}"/>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>

@@ -484,6 +484,107 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    <!-- ESTILO DE CONTEXT MENU MODERNO MINIMALISTA (ESTILO TEAMVIEWER DARK) -->
+    <Style TargetType="ContextMenu">
+        <Setter Property="Background" Value="{StaticResource BrushSurface}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BrushBorder}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="5,5"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="8"
+                            Padding="{TemplateBinding Padding}">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Color="#000000" Opacity="0.55"/>
+                        </Border.Effect>
+                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="MenuItem">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource BrushTextPrimary}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontWeight" Value="Normal"/>
+        <Setter Property="Padding" Value="10,6"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Border x:Name="itemBorder" Background="{TemplateBinding Background}" CornerRadius="5" Margin="1" Padding="{TemplateBinding Padding}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="MenuItemIconColumnGroup"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="MenuItemShortcutColumnGroup"/>
+                            </Grid.ColumnDefinitions>
+                            <ContentPresenter x:Name="Icon" ContentSource="Icon" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                            <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}" Margin="16,0,0,0" Foreground="{StaticResource BrushTextMuted}" FontSize="11" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="itemBorder" Property="Background" Value="{StaticResource BrushSurfaceHover}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource BrushTextMuted}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="DangerMenuItemStyle" TargetType="MenuItem">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource BrushRed}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Padding" Value="10,6"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Border x:Name="itemBorder" Background="{TemplateBinding Background}" CornerRadius="5" Margin="1" Padding="{TemplateBinding Padding}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="MenuItemIconColumnGroup"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <ContentPresenter x:Name="Icon" ContentSource="Icon" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                            <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="itemBorder" Property="Background" Value="#321A1D"/>
+                            <Setter Property="Foreground" Value="#FFA1A1"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="Separator">
+        <Setter Property="Background" Value="{StaticResource BrushBorder}"/>
+        <Setter Property="Margin" Value="4,4"/>
+        <Setter Property="Height" Value="1"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Separator">
+                    <Border Background="{TemplateBinding Background}" Height="1" Margin="{TemplateBinding Margin}"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
 </ResourceDictionary>

@@ -53,19 +53,56 @@ $Password = [System.Web.Security.Membership]::GeneratePassword(24, 6)
 
 # 4. Instalar e Configurar o Serviço do Windows
 Write-Host "[3/5] Registrando serviço de sistema BipDesk..." -ForegroundColor Green
-& $SessionExe --install-service | Out-Null
-Start-Sleep -Seconds 2
 
-# Configurar Servidor BipDesk Cloud e Chave Criptográfica
-    $ServerKey = $env:BIPDESK_SERVER_KEY
-    if (-not $ServerKey) {
-        $ServerKey = "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw="
-    }
-    & $SessionExe --server "bipdesk.duckdns.org" --key $ServerKey | Out-Null
-Start-Sleep -Seconds 1
+$ServerHost = "bipdesk.duckdns.org"
+$ServerKey = $env:BIPDESK_SERVER_KEY
+if (-not $ServerKey) {
+    $ServerKey = "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw="
+}
+
+$tomlContent = @"
+rendezvous_server = '$ServerHost'
+relay_server = '$ServerHost'
+api_server = 'https://$ServerHost'
+
+[options]
+custom-rendezvous-server = '$ServerHost'
+relay-server = '$ServerHost'
+api-server = 'https://$ServerHost'
+key = '$ServerKey'
+"@
+
+$targetConfigs = @(
+    "$env:APPDATA\RustDesk\config\RustDesk.toml",
+    "$env:APPDATA\RustDesk\config\RustDesk2.toml",
+    "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk.toml",
+    "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk2.toml",
+    "C:\Windows\System32\config\systemprofile\AppData\Roaming\RustDesk\config\RustDesk.toml",
+    "C:\Windows\System32\config\systemprofile\AppData\Roaming\RustDesk\config\RustDesk2.toml"
+)
+
+foreach ($cfgPath in $targetConfigs) {
+    try {
+        $parent = Split-Path -Path $cfgPath -Parent
+        if (-not (Test-Path $parent)) {
+            New-Item -ItemType Directory -Path $parent -Force -ErrorAction SilentlyContinue | Out-Null
+        }
+        Set-Content -Path $cfgPath -Value $tomlContent -Encoding UTF8 -Force -ErrorAction SilentlyContinue | Out-Null
+    } catch { }
+}
+
+# Configurar via CLI oficial
+& $SessionExe --config "host=$ServerHost,key=$ServerKey" | Out-Null
+Start-Sleep -Milliseconds 800
 
 # Definir a senha permanente silenciosamente
 & $SessionExe --password $Password | Out-Null
+Start-Sleep -Milliseconds 800
+
+# Registra e inicia o serviço
+& $SessionExe --install-service | Out-Null
+Start-Sleep -Seconds 1
+Restart-Service -Name "RustDesk" -Force -ErrorAction SilentlyContinue | Out-Null
 
 function Get-CleanRustdeskId {
     param([string]$RawText)

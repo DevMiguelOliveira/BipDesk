@@ -262,20 +262,47 @@ func runAutoSetup(serverURL string) (string, error) {
 		_ = copyFile(currentExe, agentExe)
 	}
 
-	// 5. Instala e configura o serviço do RustDesk/BipDesk
-	_ = exec.Command(sessionExe, "--install-service").Run()
-	time.Sleep(1 * time.Second)
-
+	// 5. Configura e instala o serviço do RustDesk/BipDesk com o servidor próprio
+	serverHost := "bipdesk.duckdns.org"
 	serverKey := os.Getenv("BIPDESK_SERVER_KEY")
 	if serverKey == "" {
 		serverKey = "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw="
 	}
-	_ = exec.Command(sessionExe, "--server", "bipdesk.duckdns.org", "--key", serverKey).Run()
+
+	tomlConfig := fmt.Sprintf(`rendezvous_server = '%s'
+relay_server = '%s'
+api_server = 'https://%s'
+
+[options]
+custom-rendezvous-server = '%s'
+relay-server = '%s'
+api-server = 'https://%s'
+key = '%s'
+`, serverHost, serverHost, serverHost, serverHost, serverHost, serverHost, serverKey)
+
+	// Grava em todos os perfis possíveis (usuário atual e LocalSystem/LocalService)
+	appData := os.Getenv("APPDATA")
+	targetDirs := []string{
+		filepath.Join(appData, "RustDesk", "config"),
+		`C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config`,
+		`C:\Windows\System32\config\systemprofile\AppData\Roaming\RustDesk\config`,
+	}
+	for _, dir := range targetDirs {
+		_ = os.MkdirAll(dir, 0755)
+		_ = os.WriteFile(filepath.Join(dir, "RustDesk.toml"), []byte(tomlConfig), 0644)
+		_ = os.WriteFile(filepath.Join(dir, "RustDesk2.toml"), []byte(tomlConfig), 0644)
+	}
+
+	// Aplica configuração via flag CLI oficial
+	_ = exec.Command(sessionExe, "--config", fmt.Sprintf("host=%s,key=%s", serverHost, serverKey)).Run()
 	time.Sleep(500 * time.Millisecond)
 
 	password := generateRandomPassword(20)
 	_ = exec.Command(sessionExe, "--password", password).Run()
 	time.Sleep(500 * time.Millisecond)
+
+	_ = exec.Command(sessionExe, "--install-service").Run()
+	time.Sleep(1 * time.Second)
 
 	// 6. Obtém o ID da máquina
 	var machineID string
@@ -418,6 +445,38 @@ func executeCommand(cmd CommandItem) {
 			log.Println("[BipDesk Host Agent] Reiniciando servico de Spooler de Impressao...")
 			go func() {
 				exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command", "Restart-Service -Name spooler -Force").Run()
+			}()
+		}
+
+	case "flush_dns":
+		if runtime.GOOS == "windows" {
+			log.Println("[BipDesk Host Agent] Limpando cache DNS...")
+			go func() {
+				exec.Command("ipconfig.exe", "/flushdns").Run()
+			}()
+		}
+
+	case "renew_ip":
+		if runtime.GOOS == "windows" {
+			log.Println("[BipDesk Host Agent] Renovando configuracao IP (DHCP)...")
+			go func() {
+				exec.Command("ipconfig.exe", "/renew").Run()
+			}()
+		}
+
+	case "lock_workstation":
+		if runtime.GOOS == "windows" {
+			log.Println("[BipDesk Host Agent] Bloqueando tela da estacao de trabalho...")
+			go func() {
+				exec.Command("rundll32.exe", "user32.dll,LockWorkStation").Run()
+			}()
+		}
+
+	case "gpupdate":
+		if runtime.GOOS == "windows" {
+			log.Println("[BipDesk Host Agent] Atualizando politicas GPO (gpupdate /force)...")
+			go func() {
+				exec.Command("gpupdate.exe", "/force").Run()
 			}()
 		}
 

@@ -25,11 +25,19 @@ namespace BipDesk.Tech.Services
             var localPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "BipDesk_Session.exe");
             if (File.Exists(localPath)) return localPath;
 
-            // 2. Program Files
-            var pfPath = @"C:\Program Files\BipDesk\BipDesk_Session.exe";
-            if (File.Exists(pfPath)) return pfPath;
+            // 2. Program Files BipDesk
+            var pfBipDesk = @"C:\Program Files\BipDesk\BipDesk_Session.exe";
+            if (File.Exists(pfBipDesk)) return pfBipDesk;
 
-            // 3. AppData Local
+            // 3. AppData Local RustDesk instalado
+            var appDataRustDesk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rustdesk", "rustdesk.exe");
+            if (File.Exists(appDataRustDesk)) return appDataRustDesk;
+
+            // 4. Program Files RustDesk
+            var pfRustDesk = @"C:\Program Files\RustDesk\RustDesk.exe";
+            if (File.Exists(pfRustDesk)) return pfRustDesk;
+
+            // 5. AppData Local BipDesk
             var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BipDesk", "BipDesk_Session.exe");
             if (File.Exists(appDataPath)) return appDataPath;
 
@@ -67,26 +75,40 @@ namespace BipDesk.Tech.Services
         {
             try
             {
-                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                var configDir = Path.Combine(appData, "RustDesk", "config");
-                Directory.CreateDirectory(configDir);
-
-                var configPath = Path.Combine(configDir, "RustDesk2.toml");
                 var serverHost = "bipdesk.duckdns.org";
                 var serverKey = Environment.GetEnvironmentVariable("BIPDESK_SERVER_KEY") ?? "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw=";
 
                 var tomlContent = $@"rendezvous_server = '{serverHost}'
 relay_server = '{serverHost}'
+api_server = 'https://{serverHost}'
 
 [options]
 custom-rendezvous-server = '{serverHost}'
+relay-server = '{serverHost}'
+api-server = 'https://{serverHost}'
 key = '{serverKey}'
 ";
-                File.WriteAllText(configPath, tomlContent);
+
+                // Grava em AppData Roaming (onde o RustDesk lê primordialmente)
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var configDir = Path.Combine(appData, "RustDesk", "config");
+                Directory.CreateDirectory(configDir);
+
+                File.WriteAllText(Path.Combine(configDir, "RustDesk.toml"), tomlContent);
+                File.WriteAllText(Path.Combine(configDir, "RustDesk2.toml"), tomlContent);
+
+                // Grava em AppData Local
+                var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                var localConfigDir = Path.Combine(localAppData, "RustDesk", "config");
+                if (Directory.Exists(localConfigDir))
+                {
+                    File.WriteAllText(Path.Combine(localConfigDir, "RustDesk.toml"), tomlContent);
+                    File.WriteAllText(Path.Combine(localConfigDir, "RustDesk2.toml"), tomlContent);
+                }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[SessionLauncher] Erro ao gravar RustDesk2.toml: {ex.Message}");
+                Debug.WriteLine($"[SessionLauncher] Erro ao gravar configs RustDesk: {ex.Message}");
             }
         }
 
@@ -102,6 +124,20 @@ key = '{serverKey}'
                 }
 
                 var serverKey = Environment.GetEnvironmentVariable("BIPDESK_SERVER_KEY") ?? "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw=";
+
+                // Garante que o executável receba a configuração do servidor via flag CLI antes de abrir a conexão
+                try
+                {
+                    var cfgProc = Process.Start(new ProcessStartInfo
+                    {
+                        FileName = exePath,
+                        Arguments = $"--config host=bipdesk.duckdns.org,key={serverKey}",
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    });
+                    cfgProc?.WaitForExit(1500);
+                }
+                catch { }
 
                 var startInfo = new ProcessStartInfo
                 {
