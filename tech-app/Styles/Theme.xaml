@@ -484,6 +484,8 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
     <!-- ESTILO DE CONTEXT MENU MODERNO MINIMALISTA (ESTILO TEAMVIEWER DARK) -->
     <Style TargetType="ContextMenu">
         <Setter Property="Background" Value="{StaticResource BrushSurface}"/>
