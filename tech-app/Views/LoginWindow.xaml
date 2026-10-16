@@ -3,50 +3,89 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="BipDesk Admin - Acesso de Técnicos"
         Icon="pack://application:,,,/Resources/icon.ico"
-        Height="470" Width="400"
+        Height="540" Width="430"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         Background="{StaticResource BrushBgDark}"
         Foreground="{StaticResource BrushTextPrimary}"
         KeyDown="Window_KeyDown">
 
-    <Grid Margin="28,24,28,24" VerticalAlignment="Center">
+    <Grid Margin="32,24" VerticalAlignment="Center">
         <Grid.RowDefinitions>
-            <!-- Header Logo -->
+            <!-- Brand / Logo Header -->
             <RowDefinition Height="Auto"/>
-            <!-- Form Card -->
+            <!-- Credentials Card -->
+            <RowDefinition Height="Auto"/>
+            <!-- Footer Server Pill -->
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- HEADER -->
-        <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,0,0,20">
-            <Image Source="pack://application:,,,/Resources/icon.ico" Width="52" Height="52" Margin="0,0,0,10" HorizontalAlignment="Center"/>
+        <!-- 1. BRAND HEADER COM BADGE VETORIAL NÍTIDO -->
+        <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,0,0,22">
+            <!-- Vector Monitor + Lightning Badge (Sem pixelização ou desfoque) -->
+            <Border Width="62" Height="62" CornerRadius="18" Margin="0,0,0,12" HorizontalAlignment="Center" 
+                    BorderThickness="1.5" BorderBrush="#4000E5A3">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#0D3528" Offset="0.0"/>
+                        <GradientStop Color="#061711" Offset="1.0"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+                <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <!-- Monitor Frame Vector -->
+                    <Path Data="M 2 4 C 2 2.9 2.9 2 4 2 L 28 2 C 29.1 2 30 2.9 30 4 L 30 20 C 30 21.1 29.1 22 28 22 L 18 22 L 20 26 L 23 26 C 23.5 26 24 26.5 24 27 C 24 27.5 23.5 28 23 28 L 9 28 C 8.5 28 8 27.5 8 27 C 8 26.5 8.5 26 9 26 L 12 26 L 14 22 L 4 22 C 2.9 22 2 21.1 2 20 Z M 4 4 L 4 20 L 28 20 L 28 4 Z"
+                          Fill="{StaticResource BrushEmerald}" Width="32" Height="30" Stretch="Uniform" Opacity="0.95"/>
+                    <!-- Lightning Bolt Zap Vector -->
+                    <Path Data="M 17 6 L 12 13 L 16 13 L 14 18 L 20 11 L 16 11 Z"
+                          Fill="#FFFFFF" Width="13" Height="15" Stretch="Uniform" Margin="0,-3,0,0"/>
+                </Grid>
+            </Border>
+
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                <TextBlock Text="BipDesk" FontSize="22" FontWeight="Bold" Foreground="{StaticResource BrushEmerald}"/>
-                <TextBlock Text=" Admin" FontSize="22" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}"/>
+                <TextBlock Text="BipDesk" FontSize="23" FontWeight="Bold" Foreground="{StaticResource BrushEmerald}"/>
+                <TextBlock Text=" Admin" FontSize="23" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}"/>
             </StackPanel>
             <TextBlock Text="Central de Suporte &amp; Gestão Remota" FontSize="12" Foreground="{StaticResource BrushTextSecondary}" Margin="0,4,0,0" HorizontalAlignment="Center"/>
         </StackPanel>
 
-        <!-- FORM CARD -->
-        <Border Grid.Row="1" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="12" Padding="24,22">
+        <!-- 2. FORM CARD ELEGANTE -->
+        <Border Grid.Row="1" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="12" Padding="26,24">
             <StackPanel>
-                <!-- Usuário -->
+                <!-- Nome de Usuário -->
                 <TextBlock Text="Nome de Usuário" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,6"/>
-                <TextBox x:Name="TxtUsername" Style="{StaticResource SearchTextBoxStyle}" Margin="0,0,0,14" Height="38"/>
+                <TextBox x:Name="TxtUsername" Style="{StaticResource SearchTextBoxStyle}" Margin="0,0,0,16" Height="42" FontSize="13"/>
 
-                <!-- Senha -->
+                <!-- Senha com Toggle Mostrar/Ocultar -->
                 <TextBlock Text="Senha de Acesso" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}" Margin="0,0,0,6"/>
-                <PasswordBox x:Name="TxtPassword" Style="{StaticResource ModernPasswordBoxStyle}" Margin="0,0,0,12" Height="38"/>
+                <Grid Margin="0,0,0,14">
+                    <PasswordBox x:Name="TxtPassword" Style="{StaticResource ModernPasswordBoxStyle}" Height="42" FontSize="13" Padding="12,0,38,0"/>
+                    <TextBox x:Name="TxtPasswordVisible" Style="{StaticResource SearchTextBoxStyle}" Height="42" FontSize="13" Padding="12,0,38,0" Visibility="Collapsed"/>
+                    <Button x:Name="BtnTogglePassword" Style="{StaticResource IconButtonStyle}" Content="👁" 
+                            HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,6,0" Padding="6" 
+                            Click="BtnTogglePassword_Click" ToolTip="Mostrar/Ocultar Senha" Focusable="False"/>
+                </Grid>
 
                 <!-- Lembrar meu usuário -->
                 <CheckBox x:Name="ChkRemember" Content="Lembrar meu usuário" Foreground="{StaticResource BrushTextSecondary}" FontSize="12" Margin="0,0,0,16" IsChecked="True"/>
 
-                <!-- Mensagem de Status / Erro -->
-                <TextBlock x:Name="TxtStatus" Text="" FontSize="12" Foreground="{StaticResource BrushRed}" TextWrapping="Wrap" Margin="0,0,0,12" Visibility="Collapsed" HorizontalAlignment="Center"/>
+                <!-- Alerta de Erro com Banner -->
+                <Border x:Name="BorderStatus" Background="#261415" BorderBrush="#592023" BorderThickness="1" CornerRadius="8" Padding="12,8" Margin="0,0,0,14" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <TextBlock Text="⚠️ " FontSize="12" Foreground="{StaticResource BrushRed}" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="TxtStatus" Text="" FontSize="12" Foreground="#FCA5A5" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
 
                 <!-- BOTÃO ENTRAR -->
-                <Button x:Name="BtnLogin" Content="Entrar" Style="{StaticResource ConnectButtonStyle}" Height="42" FontSize="14" FontWeight="Bold" Cursor="Hand" Click="BtnLogin_Click"/>
+                <Button x:Name="BtnLogin" Content="Entrar" Style="{StaticResource ConnectButtonStyle}" Height="44" FontSize="14" FontWeight="Bold" Cursor="Hand" Click="BtnLogin_Click"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 3. FOOTER SERVER STATUS PILL -->
+        <Border Grid.Row="2" HorizontalAlignment="Center" Margin="0,18,0,0" Background="#0C131F" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="12" Padding="12,4">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Ellipse Width="6" Height="6" Fill="{StaticResource BrushEmerald}" Margin="0,0,8,0"/>
+                <TextBlock Text="Nuvem: bipdesk.duckdns.org" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
             </StackPanel>
         </Border>
     </Grid>

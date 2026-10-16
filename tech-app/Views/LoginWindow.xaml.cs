@@ -79,10 +79,34 @@ namespace BipDesk.Tech.Views
             catch { }
         }
 
+        private bool _isPasswordVisible = false;
+
+        private void BtnTogglePassword_Click(object sender, RoutedEventArgs e)
+        {
+            _isPasswordVisible = !_isPasswordVisible;
+            if (_isPasswordVisible)
+            {
+                TxtPasswordVisible.Text = TxtPassword.Password;
+                TxtPassword.Visibility = Visibility.Collapsed;
+                TxtPasswordVisible.Visibility = Visibility.Visible;
+                TxtPasswordVisible.Focus();
+                TxtPasswordVisible.CaretIndex = TxtPasswordVisible.Text.Length;
+                BtnTogglePassword.Content = "🔒";
+            }
+            else
+            {
+                TxtPassword.Password = TxtPasswordVisible.Text;
+                TxtPasswordVisible.Visibility = Visibility.Collapsed;
+                TxtPassword.Visibility = Visibility.Visible;
+                TxtPassword.Focus();
+                BtnTogglePassword.Content = "👁";
+            }
+        }
+
         private async void BtnLogin_Click(object sender, RoutedEventArgs e)
         {
             string username = TxtUsername.Text.Trim();
-            string password = TxtPassword.Password;
+            string password = _isPasswordVisible ? TxtPasswordVisible.Text : TxtPassword.Password;
 
             if (string.IsNullOrWhiteSpace(username))
             {
@@ -94,11 +118,11 @@ namespace BipDesk.Tech.Views
             if (string.IsNullOrWhiteSpace(password))
             {
                 ShowError("Informe a senha de acesso.");
-                TxtPassword.Focus();
+                if (_isPasswordVisible) TxtPasswordVisible.Focus(); else TxtPassword.Focus();
                 return;
             }
 
-            TxtStatus.Visibility = Visibility.Collapsed;
+            BorderStatus.Visibility = Visibility.Collapsed;
             BtnLogin.IsEnabled = false;
             BtnLogin.Content = "Autenticando...";
             Cursor = Cursors.Wait;
@@ -139,7 +163,7 @@ namespace BipDesk.Tech.Views
         private void ShowError(string message)
         {
             TxtStatus.Text = message;
-            TxtStatus.Visibility = Visibility.Visible;
+            BorderStatus.Visibility = Visibility.Visible;
         }
 
         private void Window_KeyDown(object sender, KeyEventArgs e)
