@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -339,14 +340,15 @@ key = '%s'
 
 	// 7. Registra na API (Enroll)
 	hostname, _ := os.Hostname()
-enrollPayload := map[string]string{
-        "token":       os.Getenv("BIPDESK_ENROLL_TOKEN"),
-        "rustdesk_id": machineID,
-        "hostname":    hostname,
-        "username":    getLoggedInUser(),
-        "os_version":  runtime.GOOS,
-        "password":    password,
-    }
+	enrollPayload := map[string]string{
+		"token":       os.Getenv("BIPDESK_ENROLL_TOKEN"),
+		"rustdesk_id": machineID,
+		"hostname":    hostname,
+		"username":    getLoggedInUser(),
+		"os_version":  runtime.GOOS,
+		"ip_address":  getLocalIP(),
+		"password":    password,
+	}
 	enrollData, _ := json.Marshal(enrollPayload)
 	endpoint := fmt.Sprintf("%s/api/agent/enroll", strings.TrimRight(serverURL, "/"))
 	client := createHTTPClient(15 * time.Second)
@@ -406,6 +408,60 @@ func getLoggedInUser() string {
 		return parts[len(parts)-1]
 	}
 	return os.Getenv("USERNAME")
+}
+
+// getLocalIP obtém o endereço IPv4 real da máquina (o mesmo retornado pelo ipconfig na interface com gateway).
+func getLocalIP() string {
+	// 1. Tenta descobrir o IP da interface de saída padrão conectando via UDP a um endereço público
+	// Isso consulta a tabela de rotas do SO sem enviar pacotes reais pela rede.
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err == nil {
+		defer conn.Close()
+		if localAddr, ok := conn.LocalAddr().(*net.UDPAddr); ok {
+			ip := localAddr.IP.String()
+			if ip != "" && !strings.HasPrefix(ip, "127.") && !strings.HasPrefix(ip, "169.254.") {
+				return ip
+			}
+		}
+	}
+
+	// 2. Fallback: itera pelas interfaces de rede físicas ativas
+	ifaces, err := net.Interfaces()
+	if err == nil {
+		for _, iface := range ifaces {
+			if (iface.Flags&net.FlagUp) == 0 || (iface.Flags&net.FlagLoopback) != 0 {
+				continue
+			}
+			name := strings.ToLower(iface.Name)
+			if strings.Contains(name, "virtual") || strings.Contains(name, "vethernet") ||
+				strings.Contains(name, "wsl") || strings.Contains(name, "tailscale") ||
+				strings.Contains(name, "zerotier") {
+				continue
+			}
+			addrs, err := iface.Addrs()
+			if err != nil {
+				continue
+			}
+			for _, addr := range addrs {
+				var ip net.IP
+				switch v := addr.(type) {
+				case *net.IPNet:
+					ip = v.IP
+				case *net.IPAddr:
+					ip = v.IP
+				}
+				if ip == nil || ip.IsLoopback() {
+					continue
+				}
+				ip4 := ip.To4()
+				if ip4 != nil && !strings.HasPrefix(ip4.String(), "169.254.") {
+					return ip4.String()
+				}
+			}
+		}
+	}
+
+	return ""
 }
 
 func executeCommand(cmd CommandItem) {
@@ -489,6 +545,7 @@ func sendHeartbeat(serverURL string, clientID string, httpClient *http.Client) e
 	payload := HeartbeatPayload{
 		RustdeskID:   clientID,
 		LoggedInUser: getLoggedInUser(),
+		IPAddress:    getLocalIP(),
 	}
 
 	data, err := json.Marshal(payload)

@@ -149,6 +149,7 @@ class EnrollRequest(BaseModel):
     hostname: str
     username: Optional[str] = None
     os_version: Optional[str] = None
+    ip_address: Optional[str] = None
     password: str
 
 class HeartbeatRequest(BaseModel):
@@ -494,7 +495,10 @@ def agent_enroll(req: EnrollRequest, request: Request, db: Session = Depends(get
             raise HTTPException(status_code=400, detail="Token de instalação inválido ou expirado")
         token_entry.is_used = True
     
-    client_ip = request.client.host if request.client else None
+    # Prioriza o IP local real da máquina (ipconfig) reportado pelo agent.
+    # Fallback para o IP da conexão HTTP apenas se não foi fornecido.
+    reported_ip = (req.ip_address or "").strip()
+    client_ip = reported_ip if (reported_ip and not reported_ip.startswith("127.")) else (request.client.host if request.client else None)
 
     # Verifica se já existe por ID limpo ou legado corrompido que termina com esse ID
     machine = db.query(Machine).filter(Machine.rustdesk_id == req.rustdesk_id).first()
@@ -523,7 +527,7 @@ def agent_enroll(req: EnrollRequest, request: Request, db: Session = Depends(get
             machine.alias = req.hostname
         if req.username: machine.logged_in_user = req.username
         if req.os_version: machine.os_version = req.os_version
-        machine.ip_address = client_ip
+        if client_ip: machine.ip_address = client_ip
         machine.encrypted_password = encrypt_password(req.password)
         machine.last_seen_at = datetime.utcnow()
 
@@ -550,7 +554,8 @@ def agent_heartbeat(req: HeartbeatRequest, request: Request, db: Session = Depen
                 machine.hostname = f"Host-{req.rustdesk_id}"
             db.commit()
 
-    client_ip = req.ip_address or (request.client.host if request.client else None)
+    reported_ip = (req.ip_address or "").strip()
+    has_reported_lan_ip = bool(reported_ip and not reported_ip.startswith("127."))
     
     if not machine:
         # Auto-registro em caso de primeiro contato via heartbeat
@@ -565,7 +570,7 @@ def agent_heartbeat(req: HeartbeatRequest, request: Request, db: Session = Depen
             client_group="Geral",
             department="Geral",
             logged_in_user=req.logged_in_user,
-            ip_address=client_ip,
+            ip_address=reported_ip if has_reported_lan_ip else (request.client.host if request.client else None),
             encrypted_password=encrypt_password(default_pwd),
             last_seen_at=datetime.utcnow()
         )
@@ -575,7 +580,12 @@ def agent_heartbeat(req: HeartbeatRequest, request: Request, db: Session = Depen
     
     machine.last_seen_at = datetime.utcnow()
     if req.logged_in_user: machine.logged_in_user = req.logged_in_user
-    if client_ip: machine.ip_address = client_ip
+    # Se o agente enviou o IP real da LAN (ipconfig), atualiza.
+    # Se não foi fornecido, apenas preenche com o IP de conexão se estiver vazio.
+    if has_reported_lan_ip:
+        machine.ip_address = reported_ip
+    elif not machine.ip_address:
+        machine.ip_address = request.client.host if request.client else None
 
     # Busca comandos pendentes para o agente executar
     pending_cmds = db.query(RemoteCommand).filter(

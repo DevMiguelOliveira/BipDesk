@@ -181,12 +181,42 @@ $ComputerName = $env:COMPUTERNAME
 $Username = [System.Environment]::UserName
 $OS = (Get-CimInstance Win32_OperatingSystem).Caption
 
+# Detectar IP local real da máquina (o mesmo do ipconfig na interface com gateway)
+$LocalIp = ""
+try {
+    $s = New-Object System.Net.Sockets.Socket([System.Net.Sockets.AddressFamily]::InterNetwork, [System.Net.Sockets.SocketType]::Dgram, [System.Net.Sockets.ProtocolType]::Udp)
+    $s.Connect("8.8.8.8", 80)
+    $LocalIp = ($s.LocalEndPoint -as [System.Net.IPEndPoint]).Address.IPAddressToString
+    $s.Close()
+} catch {}
+
+if (-not $LocalIp -or $LocalIp -like "127.*") {
+    $adapters = [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() | Where-Object {
+        $_.OperationalStatus -eq 'Up' -and
+        $_.NetworkInterfaceType -ne 'Loopback' -and
+        $_.Description -notmatch 'Virtual|Hyper-V|vEthernet|WSL|Tailscale|ZeroTier'
+    }
+    foreach ($adapter in $adapters) {
+        $ipProps = $adapter.GetIPProperties()
+        if ($ipProps.GatewayAddresses.Count -gt 0) {
+            foreach ($unicast in $ipProps.UnicastAddresses) {
+                if ($unicast.Address.AddressFamily -eq 'InterNetwork' -and -not $unicast.Address.IPAddressToString.StartsWith('169.254')) {
+                    $LocalIp = $unicast.Address.IPAddressToString
+                    break
+                }
+            }
+        }
+        if ($LocalIp) { break }
+    }
+}
+
 $Payload = @{
     token = $EnrollToken
     rustdesk_id = $MachineId
     hostname = $ComputerName
     username = $Username
     os_version = $OS
+    ip_address = $LocalIp
     password = $Password
 } | ConvertTo-Json
 
