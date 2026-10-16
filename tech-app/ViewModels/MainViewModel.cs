@@ -347,13 +347,24 @@ namespace BipDesk.Tech.ViewModels
 
             await Task.WhenAll(groupsTask, machinesTask);
 
-            UpdateGroupsList(await groupsTask);
-            _rawMachines = await machinesTask;
+            var groups = await groupsTask;
+            var machines = await machinesTask;
 
-            OnPropertyChanged(nameof(TotalCount));
-            OnPropertyChanged(nameof(OnlineCount));
-            OnPropertyChanged(nameof(BusyCount));
-            ApplyFilter();
+            void Apply()
+            {
+                UpdateGroupsList(groups);
+                _rawMachines = machines;
+
+                OnPropertyChanged(nameof(TotalCount));
+                OnPropertyChanged(nameof(OnlineCount));
+                OnPropertyChanged(nameof(BusyCount));
+                ApplyFilter();
+            }
+
+            if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+                Application.Current.Dispatcher.Invoke(Apply);
+            else
+                Apply();
         }
 
         private async Task PollDataAsync()
@@ -368,56 +379,64 @@ namespace BipDesk.Tech.ViewModels
                 var newGroups = await groupsTask;
                 var newMachines = await machinesTask;
 
-                UpdateGroupsList(newGroups);
-
-                // Atualiza as máquinas existentes EM-LOCAL (sem substituir as instâncias e sem limpar coleções)
-                var currentSelectedId = SelectedMachine?.Id;
-
-                var newMachineMap = newMachines.ToDictionary(m => m.Id);
-                var toRemove = new List<Machine>();
-
-                foreach (var existing in _rawMachines)
+                void ExecutePollUpdate()
                 {
-                    if (newMachineMap.TryGetValue(existing.Id, out var updated))
-                    {
-                        // Se o técnico estiver com a máquina aberta no drawer, preserva campos que ele pode estar digitando
-                        bool isCurrentlyEditing = (existing.Id == currentSelectedId);
-                        existing.UpdateFrom(updated, updateEditableFields: !isCurrentlyEditing);
-                    }
-                    else
-                    {
-                        toRemove.Add(existing);
-                    }
-                }
+                    UpdateGroupsList(newGroups);
 
-                // Remove máquinas excluídas
-                foreach (var rem in toRemove)
-                {
-                    _rawMachines.Remove(rem);
-                    FilteredMachines.Remove(rem);
-                    if (SelectedMachine?.Id == rem.Id)
-                    {
-                        SelectedMachine = FilteredMachines.FirstOrDefault();
-                    }
-                }
+                    // Atualiza as máquinas existentes EM-LOCAL (sem substituir as instâncias e sem limpar coleções)
+                    var currentSelectedId = SelectedMachine?.Id;
 
-                // Adiciona novas máquinas que apareceram
-                var existingIds = new HashSet<int>(_rawMachines.Select(m => m.Id));
-                foreach (var m in newMachines)
-                {
-                    if (!existingIds.Contains(m.Id))
+                    var newMachineMap = newMachines.ToDictionary(m => m.Id);
+                    var toRemove = new List<Machine>();
+
+                    foreach (var existing in _rawMachines)
                     {
-                        _rawMachines.Add(m);
-                        if (IsMachineMatchingFilter(m))
+                        if (newMachineMap.TryGetValue(existing.Id, out var updated))
                         {
-                            FilteredMachines.Add(m);
+                            // Se o técnico estiver com a máquina aberta no drawer, preserva campos que ele pode estar digitando
+                            bool isCurrentlyEditing = (existing.Id == currentSelectedId);
+                            existing.UpdateFrom(updated, updateEditableFields: !isCurrentlyEditing);
+                        }
+                        else
+                        {
+                            toRemove.Add(existing);
                         }
                     }
+
+                    // Remove máquinas excluídas
+                    foreach (var rem in toRemove)
+                    {
+                        _rawMachines.Remove(rem);
+                        FilteredMachines.Remove(rem);
+                        if (SelectedMachine?.Id == rem.Id)
+                        {
+                            SelectedMachine = FilteredMachines.FirstOrDefault();
+                        }
+                    }
+
+                    // Adiciona novas máquinas que apareceram
+                    var existingIds = new HashSet<int>(_rawMachines.Select(m => m.Id));
+                    foreach (var m in newMachines)
+                    {
+                        if (!existingIds.Contains(m.Id))
+                        {
+                            _rawMachines.Add(m);
+                            if (IsMachineMatchingFilter(m))
+                            {
+                                FilteredMachines.Add(m);
+                            }
+                        }
+                    }
+
+                    OnPropertyChanged(nameof(TotalCount));
+                    OnPropertyChanged(nameof(OnlineCount));
+                    OnPropertyChanged(nameof(BusyCount));
                 }
 
-                OnPropertyChanged(nameof(TotalCount));
-                OnPropertyChanged(nameof(OnlineCount));
-                OnPropertyChanged(nameof(BusyCount));
+                if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+                    Application.Current.Dispatcher.Invoke(ExecutePollUpdate);
+                else
+                    ExecutePollUpdate();
             }
             catch (Exception ex)
             {
@@ -455,98 +474,112 @@ namespace BipDesk.Tech.ViewModels
 
         private void UpdateGroupsList(List<CompanyGroup> fetchedGroups)
         {
-            var currentSelectedName = SelectedGroup?.Name;
-
-            var allGroup = new CompanyGroup
+            void ExecuteUpdate()
             {
-                Name = "Todas as Empresas",
-                TotalMachines = fetchedGroups.Sum(g => g.TotalMachines),
-                OnlineMachines = fetchedGroups.Sum(g => g.OnlineMachines)
-            };
+                var currentSelectedName = SelectedGroup?.Name;
 
-            var list = new List<CompanyGroup> { allGroup };
-            list.AddRange(fetchedGroups);
-
-            // Atualiza contadores em-local para não disparar CollectionChanged se os nomes forem os mesmos
-            if (Groups.Count == list.Count && Groups.Select(g => g.Name).SequenceEqual(list.Select(g => g.Name)))
-            {
-                for (int i = 0; i < list.Count; i++)
+                var allGroup = new CompanyGroup
                 {
-                    Groups[i].TotalMachines = list[i].TotalMachines;
-                    Groups[i].OnlineMachines = list[i].OnlineMachines;
+                    Name = "Todas as Empresas",
+                    TotalMachines = fetchedGroups.Sum(g => g.TotalMachines),
+                    OnlineMachines = fetchedGroups.Sum(g => g.OnlineMachines)
+                };
+
+                var list = new List<CompanyGroup> { allGroup };
+                list.AddRange(fetchedGroups);
+
+                // Atualiza contadores em-local para não disparar CollectionChanged se os nomes forem os mesmos
+                if (Groups.Count == list.Count && Groups.Select(g => g.Name).SequenceEqual(list.Select(g => g.Name)))
+                {
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        Groups[i].TotalMachines = list[i].TotalMachines;
+                        Groups[i].OnlineMachines = list[i].OnlineMachines;
+                    }
+                    return;
                 }
-                return;
+
+                Groups.Clear();
+                foreach (var g in list)
+                {
+                    Groups.Add(g);
+                }
+
+                if (!string.IsNullOrEmpty(currentSelectedName))
+                {
+                    SelectedGroup = Groups.FirstOrDefault(g => g.Name == currentSelectedName) ?? Groups[0];
+                }
+                else if (SelectedGroup == null && Groups.Count > 0)
+                {
+                    SelectedGroup = Groups[0];
+                }
             }
 
-            Groups.Clear();
-            foreach (var g in list)
-            {
-                Groups.Add(g);
-            }
-
-            if (!string.IsNullOrEmpty(currentSelectedName))
-            {
-                SelectedGroup = Groups.FirstOrDefault(g => g.Name == currentSelectedName) ?? Groups[0];
-            }
-            else if (SelectedGroup == null && Groups.Count > 0)
-            {
-                SelectedGroup = Groups[0];
-            }
+            if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+                Application.Current.Dispatcher.Invoke(ExecuteUpdate);
+            else
+                ExecuteUpdate();
         }
 
         public void ApplyFilter(bool keepSelection = false)
         {
-            var currentId = SelectedMachine?.Id;
-
-            var query = _rawMachines.AsEnumerable();
-
-            // Filtro por Empresa / Grupo Selecionado na Barra Lateral
-            if (SelectedGroup != null && SelectedGroup.Name != "Todas as Empresas")
+            void ExecuteApply()
             {
-                query = query.Where(m => string.Equals(m.ClientGroup, SelectedGroup.Name, StringComparison.OrdinalIgnoreCase));
-            }
+                var currentId = SelectedMachine?.Id;
 
-            // Filtro de Tabs de Status
-            if (ActiveFilter == "Online")
-                query = query.Where(m => m.IsOnline);
-            else if (ActiveFilter == "EmAtendimento" || ActiveFilter == "Busy")
-                query = query.Where(m => m.IsBusy);
-            else if (ActiveFilter == "Favoritos")
-                query = query.Where(m => m.IsFavorite);
+                var query = _rawMachines.AsEnumerable();
 
-            // Filtro de Texto (Pesquisa instantânea em 1000+ máquinas)
-            if (!string.IsNullOrWhiteSpace(SearchText))
-            {
-                var term = SearchText.Trim().ToLower();
-                query = query.Where(m =>
-                    (m.Alias != null && m.Alias.ToLower().Contains(term)) ||
-                    m.Hostname.ToLower().Contains(term) ||
-                    (m.LoggedInUser != null && m.LoggedInUser.ToLower().Contains(term)) ||
-                    (m.IpAddress != null && m.IpAddress.ToLower().Contains(term)) ||
-                    (m.RustdeskId.ToLower().Contains(term)) ||
-                    (m.Department != null && m.Department.ToLower().Contains(term)) ||
-                    (m.Notes != null && m.Notes.ToLower().Contains(term)) ||
-                    (m.ClientGroup != null && m.ClientGroup.ToLower().Contains(term)));
-            }
-
-            FilteredMachines.Clear();
-            foreach (var item in query)
-            {
-                FilteredMachines.Add(item);
-            }
-
-            if (keepSelection && currentId.HasValue)
-            {
-                var found = FilteredMachines.FirstOrDefault(m => m.Id == currentId.Value);
-                if (found != null && SelectedMachine?.Id != found.Id)
+                // Filtro por Empresa / Grupo Selecionado na Barra Lateral
+                if (SelectedGroup != null && SelectedGroup.Name != "Todas as Empresas")
                 {
-                    SelectedMachine = found;
+                    query = query.Where(m => string.Equals(m.ClientGroup, SelectedGroup.Name, StringComparison.OrdinalIgnoreCase));
+                }
+
+                // Filtro de Tabs de Status
+                if (ActiveFilter == "Online")
+                    query = query.Where(m => m.IsOnline);
+                else if (ActiveFilter == "EmAtendimento" || ActiveFilter == "Busy")
+                    query = query.Where(m => m.IsBusy);
+                else if (ActiveFilter == "Favoritos")
+                    query = query.Where(m => m.IsFavorite);
+
+                // Filtro de Texto (Pesquisa instantânea em 1000+ máquinas)
+                if (!string.IsNullOrWhiteSpace(SearchText))
+                {
+                    var term = SearchText.Trim().ToLower();
+                    query = query.Where(m =>
+                        (m.Alias != null && m.Alias.ToLower().Contains(term)) ||
+                        m.Hostname.ToLower().Contains(term) ||
+                        (m.LoggedInUser != null && m.LoggedInUser.ToLower().Contains(term)) ||
+                        (m.IpAddress != null && m.IpAddress.ToLower().Contains(term)) ||
+                        m.RustdeskId.ToLower().Contains(term) ||
+                        (m.ClientGroup != null && m.ClientGroup.ToLower().Contains(term)));
+                }
+
+                FilteredMachines.Clear();
+                foreach (var item in query)
+                {
+                    FilteredMachines.Add(item);
+                }
+
+                if (keepSelection && currentId.HasValue)
+                {
+                    var found = FilteredMachines.FirstOrDefault(m => m.Id == currentId.Value);
+                    if (found != null && SelectedMachine?.Id != found.Id)
+                    {
+                        SelectedMachine = found;
+                    }
+                }
+                else if (FilteredMachines.Count > 0 && SelectedMachine == null)
+                {
+                    SelectedMachine = FilteredMachines[0];
                 }
             }
-            else if (FilteredMachines.Count > 0 && SelectedMachine == null)
-            {
-                SelectedMachine = FilteredMachines[0];
-            }
+
+            if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+                Application.Current.Dispatcher.Invoke(ExecuteApply);
+            else
+                ExecuteApply();
         }
 
         private void SetFilter(string filter)
