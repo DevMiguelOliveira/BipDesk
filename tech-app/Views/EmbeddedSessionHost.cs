@@ -41,6 +41,10 @@ namespace BipDesk.Tech.Views
         private static extern bool SetWindowText(IntPtr hWnd, string lpString);
 
         [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
         private static extern IntPtr SetFocus(IntPtr hWnd);
 
         private readonly IntPtr _childHwnd;
