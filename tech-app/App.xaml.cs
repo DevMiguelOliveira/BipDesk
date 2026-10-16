@@ -9,7 +9,7 @@ namespace BipDesk.Tech
 {
     public partial class App : Application
     {
-        private void Application_Startup(object sender, StartupEventArgs e)
+        private async void Application_Startup(object sender, StartupEventArgs e)
         {
             // Proteção contra falhas inesperadas (evita fechamento abrupto)
             DispatcherUnhandledException += (s, args) =>
@@ -29,8 +29,32 @@ namespace BipDesk.Tech
                 args.SetObserved();
             };
 
-            // Garante configuração inicial do cliente RustDesk
+            // Garante configuração inicial do cliente RustDesk e branding BipDesk
             SessionLauncher.EnsureRustDeskClientConfig();
+            SessionLauncher.EnsureBipDeskAssetBranding();
+
+            // Auto-login se houver credenciais salvas
+            var credPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BipDesk", "credentials.txt");
+            if (System.IO.File.Exists(credPath))
+            {
+                try
+                {
+                    var savedUser = System.IO.File.ReadAllText(credPath);
+                    var parts = savedUser.Split('|');
+                    if (parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[0]) && !string.IsNullOrWhiteSpace(parts[1]))
+                    {
+                        var api = new ApiClient { BaseUrl = "https://bipdesk.duckdns.org" };
+                        bool ok = await api.LoginAsync(parts[0].Trim(), parts[1].Trim());
+                        if (ok)
+                        {
+                            var mainWindow = new MainWindow(api);
+                            mainWindow.Show();
+                            return;
+                        }
+                    }
+                }
+                catch { }
+            }
 
             var loginWindow = new LoginWindow();
             loginWindow.Show();

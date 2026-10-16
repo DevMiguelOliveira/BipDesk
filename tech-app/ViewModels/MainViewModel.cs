@@ -184,6 +184,12 @@ namespace BipDesk.Tech.ViewModels
         {
             _pollTimer.Stop();
             _api.Logout();
+            try
+            {
+                var credPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BipDesk", "credentials.txt");
+                if (File.Exists(credPath)) File.Delete(credPath);
+            }
+            catch { }
         }
 
         public bool IsGridView

@@ -139,6 +139,22 @@ namespace BipDesk.Tech.Views
                 {
                     SavePreferences(username, ChkRemember.IsChecked == true);
 
+                    try
+                    {
+                        var credDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BipDesk");
+                        Directory.CreateDirectory(credDir);
+                        var credPath = Path.Combine(credDir, "credentials.txt");
+                        if (ChkRemember.IsChecked == true)
+                        {
+                            File.WriteAllText(credPath, $"{username}|{password}");
+                        }
+                        else if (File.Exists(credPath))
+                        {
+                            File.Delete(credPath);
+                        }
+                    }
+                    catch { }
+
                     var mainWindow = new MainWindow(api);
                     mainWindow.Show();
                     Close();
