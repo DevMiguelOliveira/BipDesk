@@ -72,22 +72,40 @@ api-server = 'https://$ServerHost'
 key = '$ServerKey'
 "@
 
-$targetConfigs = @(
-    "$env:APPDATA\RustDesk\config\RustDesk.toml",
-    "$env:APPDATA\RustDesk\config\RustDesk2.toml",
-    "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk.toml",
-    "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk2.toml",
-    "C:\Windows\System32\config\systemprofile\AppData\Roaming\RustDesk\config\RustDesk.toml",
-    "C:\Windows\System32\config\systemprofile\AppData\Roaming\RustDesk\config\RustDesk2.toml"
+$tomlContent = @"
+rendezvous_server = '$ServerHost:21116'
+relay_server = '$ServerHost:21117'
+api_server = 'https://$ServerHost'
+
+[options]
+custom-rendezvous-server = '$ServerHost'
+relay-server = '$ServerHost'
+api-server = 'https://$ServerHost'
+key = '$ServerKey'
+"@
+
+$targetDirs = @(
+    "$env:APPDATA\RustDesk\config",
+    "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config",
+    "C:\Windows\System32\config\systemprofile\AppData\Roaming\RustDesk\config"
 )
 
-foreach ($cfgPath in $targetConfigs) {
+foreach ($dir in $targetDirs) {
     try {
-        $parent = Split-Path -Path $cfgPath -Parent
-        if (-not (Test-Path $parent)) {
-            New-Item -ItemType Directory -Path $parent -Force -ErrorAction SilentlyContinue | Out-Null
+        if (-not (Test-Path $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force -ErrorAction SilentlyContinue | Out-Null
         }
-        Set-Content -Path $cfgPath -Value $tomlContent -Encoding UTF8 -Force -ErrorAction SilentlyContinue | Out-Null
+        # Grava apenas em RustDesk2.toml (opções de conexão e servidor customizado)
+        Set-Content -Path "$dir\RustDesk2.toml" -Value $tomlContent -Encoding UTF8 -Force -ErrorAction SilentlyContinue | Out-Null
+
+        # Se RustDesk.toml foi corrompido anteriormente por sobreposição de servidor sem chaves, remove para o motor regenerar o par Ed25519
+        $mainToml = "$dir\RustDesk.toml"
+        if (Test-Path $mainToml) {
+            $txt = Get-Content $mainToml -Raw -ErrorAction SilentlyContinue
+            if ($txt -and ($txt -like "*rendezvous_server*" -or $txt -notlike "*key_pair*")) {
+                Remove-Item -Path $mainToml -Force -ErrorAction SilentlyContinue
+            }
+        }
     } catch { }
 }
 
@@ -108,23 +126,17 @@ function Get-CleanRustdeskId {
     param([string]$RawText)
     if (-not $RawText) { return "" }
     $lines = ($RawText -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
-    # 1. Procurar linha de baixo para cima com apenas dígitos (6 a 16 dígitos)
+    
+    # 1. Procurar linha de baixo para cima com estritamente dígitos (6 a 16 dígitos)
     for ($i = $lines.Count - 1; $i -ge 0; $i--) {
         if ($lines[$i] -match '^\d{6,16}$') {
             return $lines[$i]
         }
     }
-    # 2. Procurar padrão de dígitos isolados de baixo para cima
+    # 2. Procurar padrão de dígitos isolados no final
     for ($i = $lines.Count - 1; $i -ge 0; $i--) {
         if ($lines[$i] -match '\b(\d{6,16})\b') {
             return $matches[1]
-        }
-    }
-    # 3. Fallback: linha curta alfanumérica limpa
-    for ($i = $lines.Count - 1; $i -ge 0; $i--) {
-        $candidate = $lines[$i]
-        if ($candidate -notmatch 'skip|version|error|warn|info|debug|rustdesk|flutter|\.dll' -and $candidate -match '^[a-zA-Z0-9_-]{6,32}$') {
-            return $candidate
         }
     }
     return ""
@@ -133,43 +145,41 @@ function Get-CleanRustdeskId {
 # 5. Obter ID do BipDesk
 Write-Host "[4/5] Identificando ID da máquina..." -ForegroundColor Green
 $MachineId = ""
-for ($i = 0; $i -lt 10; $i++) {
+for ($i = 0; $i -lt 15; $i++) {
     $rawOut = (& $SessionExe --get-id 2>&1 | Out-String)
     $clean = Get-CleanRustdeskId -RawText $rawOut
-    if ($clean) {
+    if ($clean -and $clean.Length -ge 6) {
         $MachineId = $clean
         break
     }
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 1
 }
 
 if (-not $MachineId) {
     $RustDeskInstalled = "C:\Program Files\RustDesk\RustDesk.exe"
     if (Test-Path $RustDeskInstalled) {
         $rawOut2 = (& $RustDeskInstalled --get-id 2>&1 | Out-String)
-        $MachineId = Get-CleanRustdeskId -RawText $rawOut2
+        $clean2 = Get-CleanRustdeskId -RawText $rawOut2
+        if ($clean2 -and $clean2.Length -ge 6) {
+            $MachineId = $clean2
+        }
     }
 }
 
 if (-not $MachineId) {
-    # Fallback: tentar ler do arquivo de configuração do RustDesk ou BipDesk
+    # Fallback: tentar ler a chave 'id =' do arquivo de configuração oficial (NUNCA 'remote_id')
     $ConfigPaths = @(
         "$env:APPDATA\RustDesk\config\RustDesk.toml",
         "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk.toml",
-        "$env:ProgramData\RustDesk\config\RustDesk.toml",
-        "$env:APPDATA\BipDesk\config\BipDesk.toml",
-        "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\BipDesk\config\BipDesk.toml",
-        "$env:ProgramData\BipDesk\config\BipDesk.toml"
+        "C:\Windows\System32\config\systemprofile\AppData\Roaming\RustDesk\config\RustDesk.toml",
+        "$env:APPDATA\BipDesk\config\BipDesk.toml"
     )
     foreach ($cfg in $ConfigPaths) {
         if (Test-Path $cfg) {
-            $Match = Select-String -Path $cfg -Pattern 'id\s*=\s*"([^"]+)"'
-            if ($Match) { 
-                $cleanFromCfg = Get-CleanRustdeskId -RawText $Match.Matches[0].Groups[1].Value
-                if ($cleanFromCfg) {
-                    $MachineId = $cleanFromCfg
-                    break
-                }
+            $content = Get-Content $cfg -Raw -ErrorAction SilentlyContinue
+            if ($content -match '(?m)^id\s*=\s*[''"](\d{6,16})[''"]') {
+                $MachineId = $matches[1]
+                break
             }
         }
     }
@@ -205,12 +215,18 @@ if (-not $LocalIp -or $LocalIp -like "127.*") {
                     break
                 }
             }
-        }
         if ($LocalIp) { break }
     }
 }
 
+if (-not $MachineId -or $MachineId.Length -lt 6) {
+    Write-Error "ERRO CRÍTICO: Não foi possível determinar o ID do serviço BipDesk Host nesta máquina. A instalação não pode prosseguir sem um ID válido."
+    Exit 1
+}
+
 $Payload = @{
+
+
     token = $EnrollToken
     rustdesk_id = $MachineId
     hostname = $ComputerName

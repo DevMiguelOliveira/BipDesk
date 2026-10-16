@@ -676,7 +676,10 @@ namespace BipDesk.Tech.ViewModels
             var ticket = await _api.GetConnectTicketAsync(machine.Id, force: false);
             if (ticket == null)
             {
-                MessageBox.Show($"Não foi possível conectar a {machine.DisplayName}. Servidor offline ou máquina inacessível.", "Erro BipDesk", MessageBoxButton.OK, MessageBoxImage.Warning);
+                var errorMsg = !string.IsNullOrWhiteSpace(_api.LastErrorMessage)
+                    ? _api.LastErrorMessage
+                    : $"Não foi possível conectar a {machine.DisplayName}. Servidor offline ou máquina inacessível.";
+                MessageBox.Show(errorMsg, "Conexão BipDesk", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 

@@ -182,6 +182,8 @@ func copyFile(src, dst string) error {
 	return err
 }
 
+var idLineRegex = regexp.MustCompile(`(?m)^id\s*=\s*['"]([0-9a-zA-Z_-]+)['"]`)
+
 func readIDFromConfig() string {
 	paths := []string{
 		filepath.Join(os.Getenv("APPDATA"), "RustDesk", "config", "RustDesk.toml"),
@@ -193,23 +195,19 @@ func readIDFromConfig() string {
 	}
 	for _, p := range paths {
 		if b, err := os.ReadFile(p); err == nil {
-			lines := strings.Split(string(b), "\n")
-			for _, l := range lines {
-				l = strings.TrimSpace(l)
-				if strings.HasPrefix(l, "id =") || strings.HasPrefix(l, "id=") {
-					parts := strings.Split(l, "\"")
-					if len(parts) >= 2 {
-						clean := extractCleanID(parts[1])
-						if clean != "" {
-							return clean
-						}
-					}
+			content := string(b)
+			m := idLineRegex.FindStringSubmatch(content)
+			if len(m) > 1 {
+				clean := extractCleanID(m[1])
+				if clean != "" {
+					return clean
 				}
 			}
 		}
 	}
 	return ""
 }
+
 
 func createDesktopShortcut(targetExe, iconFile string) {
 	desktop := filepath.Join(os.Getenv("PUBLIC"), "Desktop")
@@ -290,9 +288,19 @@ key = '%s'
 	}
 	for _, dir := range targetDirs {
 		_ = os.MkdirAll(dir, 0755)
-		_ = os.WriteFile(filepath.Join(dir, "RustDesk.toml"), []byte(tomlConfig), 0644)
+		// Server configuration belongs strictly in RustDesk2.toml
 		_ = os.WriteFile(filepath.Join(dir, "RustDesk2.toml"), []byte(tomlConfig), 0644)
+
+		// Auto-heal: If RustDesk.toml was corrupted by previous versions (contains rendezvous_server or lacks key_pair), delete it
+		rdToml := filepath.Join(dir, "RustDesk.toml")
+		if b, err := os.ReadFile(rdToml); err == nil {
+			s := string(b)
+			if strings.Contains(s, "rendezvous_server") || !strings.Contains(s, "key_pair") {
+				_ = os.Remove(rdToml)
+			}
+		}
 	}
+
 
 	// Aplica configuração via flag CLI oficial
 	_ = exec.Command(sessionExe, "--config", fmt.Sprintf("host=%s,key=%s", serverHost, serverKey)).Run()

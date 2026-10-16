@@ -38,21 +38,63 @@ namespace BipDesk.Tech.Services
         {
             try
             {
-                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                var localToml = Path.Combine(appData, "RustDesk", "config", "RustDesk_local.toml");
-                if (File.Exists(localToml))
+                // 1. Tenta obter o ID real executando --get-id no motor RustDesk
+                var appDataRustDesk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rustdesk", "rustdesk.exe");
+                var pfRustDesk = @"C:\Program Files\RustDesk\RustDesk.exe";
+                var pfBipDesk = @"C:\Program Files\BipDesk\BipDesk_Session.exe";
+
+                foreach (var exe in new[] { appDataRustDesk, pfRustDesk, pfBipDesk })
                 {
-                    var text = File.ReadAllText(localToml);
-                    var match = Regex.Match(text, @"remote_id\s*=\s*['""]([^'""]+)['""]");
-                    if (match.Success) return match.Groups[1].Value.Trim();
+                    if (File.Exists(exe))
+                    {
+                        try
+                        {
+                            var psi = new ProcessStartInfo
+                            {
+                                FileName = exe,
+                                Arguments = "--get-id",
+                                UseShellExecute = false,
+                                RedirectStandardOutput = true,
+                                CreateNoWindow = true
+                            };
+                            using var p = Process.Start(psi);
+                            if (p != null)
+                            {
+                                var outText = p.StandardOutput.ReadToEnd();
+                                p.WaitForExit(2000);
+                                var lines = outText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                                for (int i = lines.Length - 1; i >= 0; i--)
+                                {
+                                    var line = lines[i].Trim();
+                                    if (Regex.IsMatch(line, @"^\d{6,16}$"))
+                                    {
+                                        return line;
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+                    }
                 }
 
-                var mainToml = Path.Combine(appData, "RustDesk", "config", "RustDesk.toml");
-                if (File.Exists(mainToml))
+                // 2. Fallback: procura estritamente pela chave 'id =' no início da linha (NUNCA 'remote_id')
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var configPaths = new[]
                 {
-                    var text = File.ReadAllText(mainToml);
-                    var match = Regex.Match(text, @"id\s*=\s*['""]([^'""]+)['""]");
-                    if (match.Success) return match.Groups[1].Value.Trim();
+                    Path.Combine(appData, "RustDesk", "config", "RustDesk.toml"),
+                    Path.Combine(appData, "BipDesk", "config", "BipDesk.toml"),
+                    @"C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk.toml",
+                    @"C:\Windows\System32\config\systemprofile\AppData\Roaming\RustDesk\config\RustDesk.toml"
+                };
+
+                foreach (var cfg in configPaths)
+                {
+                    if (File.Exists(cfg))
+                    {
+                        var text = File.ReadAllText(cfg);
+                        var match = Regex.Match(text, @"(?m)^id\s*=\s*['""](\d{6,16})['""]");
+                        if (match.Success) return match.Groups[1].Value.Trim();
+                    }
                 }
             }
             catch { }

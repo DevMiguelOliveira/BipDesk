@@ -2,6 +2,7 @@ import os
 import re
 import secrets
 import logging
+import sqlite3
 from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Request, Response
@@ -260,17 +261,37 @@ def delete_technician(tech_id: int, current_user: User = Depends(require_admin),
     return {"status": "deleted"}
 
 # ----------------- Gestão de Máquinas & Grupos -----------------
+def get_registered_hbbs_peer_ids() -> set:
+    """Consulta diretamente o banco de dados do HBBS para verificar os peers registrados no servidor de sinalização."""
+    db_paths = [
+        "/server-keys/db_v2.sqlite3",
+        "/var/lib/bipdesk-server/db_v2.sqlite3"
+    ]
+    for p in db_paths:
+        if os.path.exists(p):
+            try:
+                conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True, timeout=1.0)
+                rows = conn.execute("SELECT id FROM peer").fetchall()
+                conn.close()
+                return {str(r[0]).strip() for r in rows if r[0]}
+            except Exception as ex:
+                logger.warning("Falha ao consultar peers do HBBS em %s: %s", p, ex)
+    return set()
+
 @app.get("/api/groups", response_model=List[GroupSummaryResponse])
 def list_groups(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     now = datetime.utcnow()
     machines = db.query(Machine).all()
+    hbbs_peers = get_registered_hbbs_peer_ids()
     grouped = {}
     for m in machines:
         grp = m.client_group or "Geral"
         if grp not in grouped:
             grouped[grp] = {"total": 0, "online": 0}
         grouped[grp]["total"] += 1
-        if (now - m.last_seen_at).total_seconds() < 90:
+        has_hb = (now - m.last_seen_at).total_seconds() < 90
+        is_in_hbbs = (not hbbs_peers) or (m.rustdesk_id in hbbs_peers)
+        if has_hb and is_in_hbbs:
             grouped[grp]["online"] += 1
 
     return [
@@ -289,11 +310,14 @@ def list_machines(group: Optional[str] = None, current_user: User = Depends(get_
         query = query.filter(Machine.client_group == group)
     
     machines = query.order_by(Machine.is_favorite.desc(), Machine.last_seen_at.desc()).all()
+    hbbs_peers = get_registered_hbbs_peer_ids()
     result = []
     now_utc = datetime.utcnow()
     for m in machines:
         diff_seconds = (now_utc - m.last_seen_at).total_seconds()
-        is_online = diff_seconds < 90
+        has_hb = diff_seconds < 90
+        is_in_hbbs = (not hbbs_peers) or (m.rustdesk_id in hbbs_peers)
+        is_online = has_hb and is_in_hbbs
         
         # Concorrência: se sessão foi iniciada há mais de 2h, limpa
         is_busy = False
@@ -355,6 +379,14 @@ def get_connect_ticket(machine_id: int, force: bool = False, current_user: User 
     machine = db.query(Machine).filter(Machine.id == machine_id).first()
     if not machine:
         raise HTTPException(status_code=404, detail="Máquina não encontrada")
+
+    # Validação HBBS Rendezvous: o ID precisa estar ativo no servidor de sinalização
+    hbbs_peers = get_registered_hbbs_peer_ids()
+    if hbbs_peers and machine.rustdesk_id not in hbbs_peers:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A máquina '{machine.hostname}' não está conectada ao servidor de sinalização (HBBS). O ID [{machine.rustdesk_id}] não foi registrado pelo serviço de acesso remoto. Verifique se o serviço BipDesk Host está ativo na máquina de destino."
+        )
 
     now = datetime.utcnow()
     # Verifica se outro técnico já está atendendo

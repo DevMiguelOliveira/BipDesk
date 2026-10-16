@@ -99,18 +99,38 @@ namespace BipDesk.Tech.Services
             }
         }
 
+        public string? LastErrorMessage { get; set; }
+
         public async Task<ConnectTicket?> GetConnectTicketAsync(int machineId, bool force = false)
         {
             try
             {
+                LastErrorMessage = null;
                 var url = $"{BaseUrl}/api/machines/{machineId}/connect?force={(force ? "true" : "false")}";
                 var resp = await _http.PostAsync(url, null);
                 if (resp.IsSuccessStatusCode)
                 {
                     return await resp.Content.ReadFromJsonAsync<ConnectTicket>();
                 }
+
+                var errText = await resp.Content.ReadAsStringAsync();
+                try
+                {
+                    using var doc = JsonDocument.Parse(errText);
+                    if (doc.RootElement.TryGetProperty("detail", out var detailProp))
+                    {
+                        LastErrorMessage = detailProp.GetString();
+                    }
+                }
+                catch
+                {
+                    LastErrorMessage = errText;
+                }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LastErrorMessage = ex.Message;
+            }
             return null;
         }
 
