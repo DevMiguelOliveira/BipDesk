@@ -41,8 +41,7 @@ namespace BipDesk.Tech.Views
         private static extern bool SetWindowText(IntPtr hWnd, string lpString);
 
         [DllImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+        private static extern IntPtr SetFocus(IntPtr hWnd);
 
         private readonly IntPtr _childHwnd;
         private bool _isDisposed;
@@ -52,12 +51,32 @@ namespace BipDesk.Tech.Views
         public EmbeddedSessionHost(IntPtr childHwnd, string title = "BipDesk - Sessão Remota")
         {
             _childHwnd = childHwnd;
+            Focusable = true;
+
+            MouseDown += (s, e) =>
+            {
+                Focus();
+                if (_childHwnd != IntPtr.Zero)
+                {
+                    SetFocus(_childHwnd);
+                }
+            };
+
+            GotFocus += (s, e) =>
+            {
+                if (_childHwnd != IntPtr.Zero)
+                {
+                    SetFocus(_childHwnd);
+                }
+            };
+
             try
             {
                 SetWindowText(_childHwnd, title);
             }
             catch { }
         }
+
 
         public void CloseSessionWindow()
         {
@@ -84,7 +103,7 @@ namespace BipDesk.Tech.Views
 
                 // Transforma a janela RustDesk em controle filho integrado (WS_CHILD) e remove bordas de popup e botões de janela nativos
                 var style = GetWindowLong(_childHwnd, GWL_STYLE);
-                style = (style & ~WS_POPUP & ~WS_CAPTION & ~WS_THICKFRAME & ~WS_MINIMIZEBOX & ~WS_MAXIMIZEBOX) | WS_CHILD;
+                style = (style & ~WS_POPUP & ~WS_CAPTION & ~WS_THICKFRAME & ~WS_MINIMIZEBOX & ~WS_MAXIMIZEBOX) | WS_CHILD | 0x00010000 /* WS_TABSTOP */;
                 SetWindowLong(_childHwnd, GWL_STYLE, style);
 
                 // Remove do alternador de janelas e barra de tarefas do Windows
@@ -102,10 +121,36 @@ namespace BipDesk.Tech.Views
                 SetWindowPos(_childHwnd, IntPtr.Zero, 0, 0, width, height,
                     SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
                 ShowWindow(_childHwnd, 5 /* SW_SHOW */);
+                SetFocus(_childHwnd);
             }
 
             return new HandleRef(this, _childHwnd);
         }
+
+        protected override bool TabIntoCore(System.Windows.Input.TraversalRequest request)
+        {
+            if (_childHwnd != IntPtr.Zero)
+            {
+                SetFocus(_childHwnd);
+                return true;
+            }
+            return base.TabIntoCore(request);
+        }
+
+        protected override IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            const int WM_SETFOCUS = 0x0007;
+            const int WM_MOUSEACTIVATE = 0x0021;
+            if (msg == WM_MOUSEACTIVATE || msg == WM_SETFOCUS)
+            {
+                if (_childHwnd != IntPtr.Zero)
+                {
+                    SetFocus(_childHwnd);
+                }
+            }
+            return base.WndProc(hwnd, msg, wParam, lParam, ref handled);
+        }
+
 
         protected override void DestroyWindowCore(HandleRef hwnd)
         {

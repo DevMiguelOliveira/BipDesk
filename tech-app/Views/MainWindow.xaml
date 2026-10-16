@@ -17,6 +17,9 @@
             <MenuItem Header="⚡ Iniciar Acesso Remoto (Enter)" FontWeight="Bold"
                       Command="{Binding DataContext.ConnectCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                       CommandParameter="{Binding}"/>
+            <MenuItem Header="🔓 Liberar Atendimento (Desocupar Máquina)"
+                      Command="{Binding DataContext.ForceReleaseSessionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}"/>
             <Separator/>
             <MenuItem Header="📋 Copiar ID BipDesk"
                       Command="{Binding DataContext.CopyIdCommand, RelativeSource={RelativeSource AncestorType=Window}}"
@@ -717,13 +720,31 @@
                                         </Style.Triggers>
                                     </Style>
                                 </Border.Style>
-                                <StackPanel>
-                                    <TextBlock Text="⚠️ EM ATENDIMENTO" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushAmber}"/>
-                                    <TextBlock FontSize="11" Foreground="{StaticResource BrushTextPrimary}" Margin="0,2,0,0">
-                                        <Run Text="Conectado por: "/>
-                                        <Run Text="{Binding BusyBy}" FontWeight="Bold"/>
-                                    </TextBlock>
-                                </StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="⚠️ EM ATENDIMENTO" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushAmber}"/>
+                                        <TextBlock FontSize="11" Foreground="{StaticResource BrushTextPrimary}" Margin="0,2,0,0">
+                                            <Run Text="Conectado por: "/>
+                                            <Run Text="{Binding BusyBy}" FontWeight="Bold"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="🔓 Liberar"
+                                            Command="{Binding DataContext.ForceReleaseSessionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="Liberar atendimento e marcar máquina como disponível"
+                                            Background="#78350F" Foreground="#FEF3C7" BorderBrush="{StaticResource BrushAmber}"
+                                            BorderThickness="1" FontSize="11" FontWeight="SemiBold" Padding="10,5" Cursor="Hand">
+                                        <Button.Resources>
+                                            <Style TargetType="Border">
+                                                <Setter Property="CornerRadius" Value="6"/>
+                                            </Style>
+                                        </Button.Resources>
+                                    </Button>
+                                </Grid>
                             </Border>
 
                             <!-- Botão Principal Conectar -->

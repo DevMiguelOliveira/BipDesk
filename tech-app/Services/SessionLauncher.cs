@@ -30,6 +30,10 @@ namespace BipDesk.Tech.Services
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool IsWindowVisible(IntPtr hWnd);
 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsWindow(IntPtr hWnd);
+
         private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
         private const int SW_RESTORE = 9;
@@ -228,7 +232,7 @@ namespace BipDesk.Tech.Services
                 if (File.Exists(filePath))
                 {
                     var current = File.ReadAllText(filePath);
-                    if (current.Contains(serverHost) && current.Contains(serverKey))
+                    if (current.Contains(serverHost) && current.Contains(serverKey) && current.Contains("allow-deep-link-password"))
                     {
                         return;
                     }
@@ -243,11 +247,16 @@ custom-rendezvous-server = '{serverHost}'
 relay-server = '{serverHost}'
 api-server = 'https://{serverHost}'
 key = '{serverKey}'
+allow-deep-link-password = 'Y'
+allow-deep-link-server-settings = 'Y'
+verification-method = 'use-permanent-password'
+approve-mode = 'password'
 ";
                 File.WriteAllText(filePath, tomlContent);
             }
             catch { }
         }
+
 
         public async Task<ActiveSession?> LaunchSessionAsync(
             Machine machine, 
@@ -337,11 +346,44 @@ key = '{serverKey}'
                                 session.HostControl = host;
                                 onWindowAttached?.Invoke(session);
                             });
+
+                            // Monitora ciclo de vida da janela remota em tempo real
+                            _ = Task.Run(async () =>
+                            {
+                                while (true)
+                                {
+                                    await Task.Delay(1000);
+                                    if (!IsWindow(hwnd))
+                                    {
+                                        Debug.WriteLine($"[SessionLauncher] Janela remota {hwnd} foi fechada pelo usuário ou desconectada.");
+                                        try
+                                        {
+                                            onSessionTerminated?.Invoke(session);
+                                        }
+                                        catch { }
+                                        break;
+                                    }
+                                }
+                            });
+                        }
+                        else
+                        {
+                            Debug.WriteLine("[SessionLauncher] Timeout ao aguardar janela remota.");
+                            try
+                            {
+                                onSessionTerminated?.Invoke(session);
+                            }
+                            catch { }
                         }
                     }
                     catch (Exception ex)
                     {
                         Debug.WriteLine($"[SessionLauncher] Erro ao acoplar janela remota: {ex.Message}");
+                        try
+                        {
+                            onSessionTerminated?.Invoke(session);
+                        }
+                        catch { }
                     }
                 });
 

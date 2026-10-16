@@ -81,7 +81,12 @@ custom-rendezvous-server = '$ServerHost'
 relay-server = '$ServerHost'
 api-server = 'https://$ServerHost'
 key = '$ServerKey'
+allow-deep-link-password = 'Y'
+allow-deep-link-server-settings = 'Y'
+verification-method = 'use-permanent-password'
+approve-mode = 'password'
 "@
+
 
 $targetDirs = @(
     "$env:APPDATA\RustDesk\config",
@@ -161,13 +166,22 @@ function Get-RustDeskRealId {
         $engineExe = $candidateExes | Where-Object { Test-Path $_ } | Select-Object -First 1
     }
 
-    # Copia o motor nativo descompactado para C:\Program Files\RustDesk
+    # Copia o motor nativo descompactado para C:\Program Files\RustDesk e configura
+    $installedEngine = "C:\Program Files\RustDesk\RustDesk.exe"
     if ($engineExe -and (Test-Path $engineExe)) {
         try {
             $engineDir = Split-Path -Path $engineExe -Parent
             $destDir = "C:\Program Files\RustDesk"
             if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
             Copy-Item -Path "$engineDir\*" -Destination $destDir -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+            
+            if (Test-Path $installedEngine) {
+                & $installedEngine --config "host=$ServerHost,key=$ServerKey" | Out-Null
+                & $installedEngine --password $Password | Out-Null
+                & $installedEngine --option allow-deep-link-password Y | Out-Null
+                & $installedEngine --option verification-method use-permanent-password | Out-Null
+                & $installedEngine --install-service | Out-Null
+            }
         } catch {}
     }
 
@@ -176,6 +190,7 @@ function Get-RustDeskRealId {
     if ($svc -and $svc.Status -ne 'Running') {
         Start-Service -Name "RustDesk" -ErrorAction SilentlyContinue
     }
+
 
     $allExes = @(
         "C:\Program Files\RustDesk\RustDesk.exe",

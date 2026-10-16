@@ -57,6 +57,7 @@ namespace BipDesk.Tech.ViewModels
             _updater = new UpdateService();
 
             ConnectCommand = new RelayCommand(async p => await ConnectToMachineAsync(p as Machine));
+            ForceReleaseSessionCommand = new RelayCommand(async p => await ForceReleaseSessionAsync(p as Machine ?? SelectedMachine));
             RefreshCommand = new RelayCommand(async _ => await LoadDataAsync());
             SaveMachineInfoCommand = new RelayCommand(async _ => await SaveMachineInfoAsync());
             ToggleFavoriteCommand = new RelayCommand(async p => await ToggleFavoriteAsync(p as Machine));
@@ -366,6 +367,7 @@ namespace BipDesk.Tech.ViewModels
         public bool IsCatalogViewActive => !IsSessionViewActive;
 
         public ICommand ConnectCommand { get; }
+        public ICommand ForceReleaseSessionCommand { get; }
         public ICommand RefreshCommand { get; }
         public ICommand SaveMachineInfoCommand { get; }
         public ICommand ToggleFavoriteCommand { get; }
@@ -709,11 +711,14 @@ namespace BipDesk.Tech.ViewModels
 
             // 3. Inicia o motor de sessão oficial via protocolo URI rustdesk:// e acopla no BipDesk Admin
             ShowNotification($"Iniciando conexão segura com {machine.DisplayName}...");
+            int sessionTerminatedOnce = 0;
             var session = await _launcher.LaunchSessionAsync(
                 machine, 
                 ticket.Password, 
                 onSessionTerminated: s =>
                 {
+                    if (Interlocked.Exchange(ref sessionTerminatedOnce, 1) == 1) return;
+
                     Application.Current?.Dispatcher?.Invoke(() =>
                     {
                         try
@@ -822,6 +827,36 @@ namespace BipDesk.Tech.ViewModels
                     }
                     catch { }
                 });
+            }
+        }
+
+        public async Task ForceReleaseSessionAsync(Machine? machine)
+        {
+            if (machine == null) machine = SelectedMachine;
+            if (machine == null) return;
+
+            try
+            {
+                // 1. Encerra e limpa sessão local se houver
+                var localSession = ActiveSessions.FirstOrDefault(s => s.Machine.Id == machine.Id);
+                if (localSession != null)
+                {
+                    await CloseSessionAsync(localSession);
+                }
+
+                // 2. Notifica API para liberar a máquina imediatamente
+                await _api.ReleaseSessionAsync(machine.Id);
+
+                // 3. Atualiza estado da máquina localmente
+                machine.IsBusy = false;
+                machine.BusyBy = null;
+                OnPropertyChanged(nameof(BusyCount));
+
+                ShowNotification($"Atendimento da máquina '{machine.DisplayName}' liberado com sucesso.");
+            }
+            catch (Exception ex)
+            {
+                ShowNotification($"Erro ao liberar atendimento: {ex.Message}");
             }
         }
 

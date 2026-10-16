@@ -24,6 +24,21 @@ namespace BipDesk.Tech.Views
             {
                 await _vm.InitializeAsync();
             };
+
+            Closing += (s, e) =>
+            {
+                try
+                {
+                    foreach (var session in System.Linq.Enumerable.ToArray(_vm.ActiveSessions))
+                    {
+                        if (session.Machine.Id > 0)
+                        {
+                            _ = _vm.Api.ReleaseSessionAsync(session.Machine.Id);
+                        }
+                    }
+                }
+                catch { }
+            };
         }
 
         private void ManageTechnicians_Click(object sender, RoutedEventArgs e)

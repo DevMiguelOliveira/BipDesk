@@ -319,11 +319,11 @@ def list_machines(group: Optional[str] = None, current_user: User = Depends(get_
         is_in_hbbs = (not hbbs_peers) or (m.rustdesk_id in hbbs_peers)
         is_online = has_hb and is_in_hbbs
         
-        # Concorrência: se sessão foi iniciada há mais de 2h, limpa
+        # Concorrência: se sessão foi iniciada há mais de 5 min sem renovação, limpa automaticamente
         is_busy = False
         busy_by = None
         if m.current_session_tech and m.session_started_at:
-            if (now_utc - m.session_started_at).total_seconds() < 7200: # 2 horas
+            if (now_utc - m.session_started_at).total_seconds() < 300: # 5 minutos
                 is_busy = True
                 busy_by = m.current_session_tech
             else:
@@ -389,9 +389,9 @@ def get_connect_ticket(machine_id: int, force: bool = False, current_user: User 
         )
 
     now = datetime.utcnow()
-    # Verifica se outro técnico já está atendendo
+    # Verifica se outro técnico já está atendendo (expira após 5 minutos se não houver renovação)
     if machine.current_session_tech and machine.current_session_tech != current_user.username:
-        if machine.session_started_at and (now - machine.session_started_at).total_seconds() < 7200 and not force:
+        if machine.session_started_at and (now - machine.session_started_at).total_seconds() < 300 and not force:
             return ConnectResponse(
                 rustdesk_id=machine.rustdesk_id,
                 password="",
@@ -427,7 +427,7 @@ def get_connect_ticket(machine_id: int, force: bool = False, current_user: User 
 @app.post("/api/machines/{machine_id}/release")
 def release_session(machine_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     machine = db.query(Machine).filter(Machine.id == machine_id).first()
-    if machine and (machine.current_session_tech == current_user.username or current_user.role == "admin"):
+    if machine:
         machine.current_session_tech = None
         machine.session_started_at = None
         db.commit()
