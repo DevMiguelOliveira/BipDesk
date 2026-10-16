@@ -214,6 +214,14 @@
         </Setter>
     </Style>
 
+    <!-- BOTÃO DE PERIGO / ENCERRAMENTO CRÍTICO -->
+    <Style x:Key="DangerButtonStyle" TargetType="Button" BasedOn="{StaticResource WarningButtonStyle}">
+        <Setter Property="Background" Value="#381D20"/>
+        <Setter Property="Foreground" Value="#F87171"/>
+        <Setter Property="BorderBrush" Value="#7F1D1D"/>
+        <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+
     <!-- BOTÃO DE AÇÃO INFORMATIVA / MENSAGEM / SPOOLER -->
     <Style x:Key="InfoButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="{StaticResource BrushBlueBg}"/>
