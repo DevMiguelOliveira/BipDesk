@@ -645,12 +645,13 @@ def agent_heartbeat(req: HeartbeatRequest, request: Request, db: Session = Depen
 def serve_install_script(token: str, request: Request):
     base_url = f"{request.url.scheme}://{request.url.netloc}"
     possible_paths = [
+        "/downloads/install-host.ps1",
         os.path.join(os.path.dirname(__file__), "install-host.ps1"),
         os.path.join(os.path.dirname(__file__), "../../deploy/install-host.ps1"),
         "/opt/BipDesk/deploy/install-host.ps1",
         "/deploy/install-host.ps1",
-        "/downloads/install-host.ps1",
     ]
+
     content = ""
     for p in possible_paths:
         if os.path.exists(p):
@@ -666,8 +667,19 @@ def serve_install_script(token: str, request: Request):
     if not content:
         raise HTTPException(status_code=500, detail="Script de instalação não localizado no servidor.")
 
-    content = content.replace('param(', f'# Injetado automaticamente\n$ServerUrl = "{base_url}"\n$EnrollToken = "{token}"\nparam(')
-    return Response(content=content, media_type="text/plain; charset=utf-8")
+    # Injeta as variáveis de ambiente ServerUrl e EnrollToken de forma 100% segura no topo do script
+    header = f'$ServerUrl = "{base_url}"\n$EnrollToken = "{token}"\n'
+    # Remove qualquer bloco param(...) legado para não quebrar a sintaxe do PowerShell
+    clean_content = re.sub(r'param\s*\([^)]*\)', '', content, flags=re.IGNORECASE)
+    # Se o script tiver comentários iniciais <# ... #>, injeta logo após
+    if clean_content.strip().startswith("<#") and "#>" in clean_content:
+        idx = clean_content.find("#>") + 2
+        final_content = clean_content[:idx] + "\n\n" + header + clean_content[idx:]
+    else:
+        final_content = header + clean_content
+
+    return Response(content=final_content, media_type="text/plain; charset=utf-8")
+
 
 @app.post("/api/enroll-tokens")
 @limiter.limit("20/minute")

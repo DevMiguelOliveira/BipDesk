@@ -4,10 +4,9 @@
     Execução: irm https://seu-dominio.duckdns.org/install/TOKEN | iex
 #>
 
-param(
-    [string]$ServerUrl = "https://bipdesk.duckdns.org",
-    [string]$EnrollToken = ""
-)
+if (-not (Test-Path variable:ServerUrl) -or -not $ServerUrl) { $ServerUrl = "https://bipdesk.duckdns.org" }
+if (-not (Test-Path variable:EnrollToken) -or -not $EnrollToken) { $EnrollToken = "" }
+
 
 $ErrorActionPreference = "Stop"
 
@@ -215,9 +214,11 @@ if (-not $LocalIp -or $LocalIp -like "127.*") {
                     break
                 }
             }
+        }
         if ($LocalIp) { break }
     }
 }
+
 
 if (-not $MachineId -or $MachineId.Length -lt 6) {
     Write-Error "ERRO CRÍTICO: Não foi possível determinar o ID do serviço BipDesk Host nesta máquina. A instalação não pode prosseguir sem um ID válido."
@@ -260,7 +261,10 @@ try {
     Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Force | Out-Null
     Start-ScheduledTask -TaskName $TaskName | Out-Null
     Write-Host ">> BipDesk Agent registrado como tarefa de sistema (AtStartup)!" -ForegroundColor Cyan
+} catch {
+    Write-Warning "Aviso: Não foi possível registrar tarefa agendada: $_"
 }
+
 
 # 8. Criar Atalhos Oficiais na Área de Trabalho e Menu Iniciar com o Ícone BipDesk
 try {
