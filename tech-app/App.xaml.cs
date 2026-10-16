@@ -33,6 +33,8 @@ namespace BipDesk.Tech
             SessionLauncher.EnsureRustDeskClientConfig();
             SessionLauncher.EnsureBipDeskAssetBranding();
 
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
             // Auto-login se houver credenciais salvas
             var credPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BipDesk", "credentials.txt");
             if (System.IO.File.Exists(credPath))
@@ -48,6 +50,8 @@ namespace BipDesk.Tech
                         if (ok)
                         {
                             var mainWindow = new MainWindow(api);
+                            MainWindow = mainWindow;
+                            ShutdownMode = ShutdownMode.OnMainWindowClose;
                             mainWindow.Show();
                             return;
                         }
@@ -57,6 +61,7 @@ namespace BipDesk.Tech
             }
 
             var loginWindow = new LoginWindow();
+            ShutdownMode = ShutdownMode.OnLastWindowClose;
             loginWindow.Show();
         }
     }

@@ -22,7 +22,11 @@ namespace BipDesk.Tech.Services
 
         public ApiClient()
         {
-            _http = new HttpClient();
+            var handler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+            };
+            _http = new HttpClient(handler);
             _http.Timeout = TimeSpan.FromSeconds(12);
         }
 
