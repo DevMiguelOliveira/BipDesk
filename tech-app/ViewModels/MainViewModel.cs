@@ -602,6 +602,23 @@ namespace BipDesk.Tech.ViewModels
             if (machine == null) machine = SelectedMachine;
             if (machine == null) return;
 
+            // Alerta amigável se o técnico tentar conectar ao próprio computador atual
+            var localId = SessionLauncher.GetLocalRustDeskId();
+            if (!string.IsNullOrEmpty(localId) && string.Equals(localId, machine.RustdeskId, StringComparison.OrdinalIgnoreCase))
+            {
+                var proceed = MessageBox.Show(
+                    $"ATENÇÃO: A máquina selecionada '{machine.DisplayName}' (ID: {machine.RustdeskId}) é este mesmo computador atual onde você está operando o BipDesk Admin.\n\n" +
+                    "O motor de conexão remota não permite que um computador controle a si mesmo em loop. Para testar o suporte remoto, instale o BipDesk Host em outro computador (físico ou máquina virtual) ou conecte-se a outro cliente da lista.\n\nDeseja mesmo assim tentar abrir a sessão local?",
+                    "Acesso ao Próprio Dispositivo - BipDesk",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Information);
+
+                if (proceed != MessageBoxResult.Yes)
+                {
+                    return;
+                }
+            }
+
             // 1. Tenta obter o ticket de conexão
             var ticket = await _api.GetConnectTicketAsync(machine.Id, force: false);
             if (ticket == null)
@@ -634,7 +651,7 @@ namespace BipDesk.Tech.ViewModels
                 }
             }
 
-            // 3. Inicia o BipDesk_Session nativo customizado (baixa automaticamente se ainda não existir)
+            // 3. Inicia o motor de sessão oficial via protocolo URI rustdesk://
             var proc = await _launcher.LaunchSessionAsync(machine, ticket.Password, session =>
             {
                 Application.Current?.Dispatcher?.Invoke(() =>
@@ -661,11 +678,18 @@ namespace BipDesk.Tech.ViewModels
 
             if (proc != null)
             {
-                var session = new ActiveSession(machine, proc);
-                ActiveSessions.Add(session);
-                machine.IsBusy = true;
-                machine.BusyBy = _api.CurrentUsername;
-                OnPropertyChanged(nameof(BusyCount));
+                Application.Current?.Dispatcher?.Invoke(() =>
+                {
+                    var existingSession = ActiveSessions.FirstOrDefault(s => s.Machine.Id == machine.Id);
+                    if (existingSession == null)
+                    {
+                        var session = new ActiveSession(machine, proc);
+                        ActiveSessions.Add(session);
+                    }
+                    machine.IsBusy = true;
+                    machine.BusyBy = _api.CurrentUsername;
+                    OnPropertyChanged(nameof(BusyCount));
+                });
             }
         }
 
@@ -682,10 +706,13 @@ namespace BipDesk.Tech.ViewModels
                 }
                 catch { }
 
-                ActiveSessions.Remove(session);
-                session.Machine.IsBusy = false;
-                session.Machine.BusyBy = null;
-                OnPropertyChanged(nameof(BusyCount));
+                Application.Current?.Dispatcher?.Invoke(() =>
+                {
+                    ActiveSessions.Remove(session);
+                    session.Machine.IsBusy = false;
+                    session.Machine.BusyBy = null;
+                    OnPropertyChanged(nameof(BusyCount));
+                });
 
                 _ = Task.Run(async () =>
                 {

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using BipDesk.Tech.Models;
 
@@ -19,29 +20,54 @@ namespace BipDesk.Tech.Services
 
         private const int SW_RESTORE = 9;
 
+        public static string? GetLocalRustDeskId()
+        {
+            try
+            {
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var localToml = Path.Combine(appData, "RustDesk", "config", "RustDesk_local.toml");
+                if (File.Exists(localToml))
+                {
+                    var text = File.ReadAllText(localToml);
+                    var match = Regex.Match(text, @"remote_id\s*=\s*['""]([^'""]+)['""]");
+                    if (match.Success) return match.Groups[1].Value.Trim();
+                }
+
+                var mainToml = Path.Combine(appData, "RustDesk", "config", "RustDesk.toml");
+                if (File.Exists(mainToml))
+                {
+                    var text = File.ReadAllText(mainToml);
+                    var match = Regex.Match(text, @"id\s*=\s*['""]([^'""]+)['""]");
+                    if (match.Success) return match.Groups[1].Value.Trim();
+                }
+            }
+            catch { }
+            return null;
+        }
+
         public string FindSessionExecutable()
         {
-            // 1. Diretório do aplicativo do técnico
-            var localPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "BipDesk_Session.exe");
-            if (File.Exists(localPath)) return localPath;
-
-            // 2. Program Files BipDesk
-            var pfBipDesk = @"C:\Program Files\BipDesk\BipDesk_Session.exe";
-            if (File.Exists(pfBipDesk)) return pfBipDesk;
-
-            // 3. AppData Local RustDesk instalado
+            // 1. AppData Local RustDesk instalado (runtime completo com Flutter, DLLs e uni_links)
             var appDataRustDesk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "rustdesk", "rustdesk.exe");
             if (File.Exists(appDataRustDesk)) return appDataRustDesk;
 
-            // 4. Program Files RustDesk
+            // 2. Program Files RustDesk oficial instalado
             var pfRustDesk = @"C:\Program Files\RustDesk\RustDesk.exe";
             if (File.Exists(pfRustDesk)) return pfRustDesk;
 
-            // 5. AppData Local BipDesk
+            // 3. Diretório do aplicativo do técnico
+            var localPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "BipDesk_Session.exe");
+            if (File.Exists(localPath)) return localPath;
+
+            // 4. AppData Local BipDesk
             var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BipDesk", "BipDesk_Session.exe");
             if (File.Exists(appDataPath)) return appDataPath;
 
-            return localPath;
+            // 5. Program Files BipDesk
+            var pfBipDesk = @"C:\Program Files\BipDesk\BipDesk_Session.exe";
+            if (File.Exists(pfBipDesk)) return pfBipDesk;
+
+            return appDataRustDesk;
         }
 
         public async Task<string> EnsureSessionExecutableAsync(Action<string>? statusCallback = null)
@@ -78,6 +104,37 @@ namespace BipDesk.Tech.Services
                 var serverHost = "bipdesk.duckdns.org";
                 var serverKey = Environment.GetEnvironmentVariable("BIPDESK_SERVER_KEY") ?? "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw=";
 
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var roamingConfigDir = Path.Combine(appData, "RustDesk", "config");
+                Directory.CreateDirectory(roamingConfigDir);
+                UpdateConfigFile(Path.Combine(roamingConfigDir, "RustDesk2.toml"), serverHost, serverKey);
+
+                var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                var localConfigDir = Path.Combine(localAppData, "RustDesk", "config");
+                if (Directory.Exists(localConfigDir))
+                {
+                    UpdateConfigFile(Path.Combine(localConfigDir, "RustDesk2.toml"), serverHost, serverKey);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SessionLauncher] Erro ao gravar configs RustDesk: {ex.Message}");
+            }
+        }
+
+        private static void UpdateConfigFile(string filePath, string serverHost, string serverKey)
+        {
+            try
+            {
+                if (File.Exists(filePath))
+                {
+                    var current = File.ReadAllText(filePath);
+                    if (current.Contains(serverHost) && current.Contains(serverKey))
+                    {
+                        return;
+                    }
+                }
+
                 var tomlContent = $@"rendezvous_server = '{serverHost}'
 relay_server = '{serverHost}'
 api_server = 'https://{serverHost}'
@@ -88,28 +145,9 @@ relay-server = '{serverHost}'
 api-server = 'https://{serverHost}'
 key = '{serverKey}'
 ";
-
-                // Grava em AppData Roaming (onde o RustDesk lê primordialmente)
-                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                var configDir = Path.Combine(appData, "RustDesk", "config");
-                Directory.CreateDirectory(configDir);
-
-                File.WriteAllText(Path.Combine(configDir, "RustDesk.toml"), tomlContent);
-                File.WriteAllText(Path.Combine(configDir, "RustDesk2.toml"), tomlContent);
-
-                // Grava em AppData Local
-                var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                var localConfigDir = Path.Combine(localAppData, "RustDesk", "config");
-                if (Directory.Exists(localConfigDir))
-                {
-                    File.WriteAllText(Path.Combine(localConfigDir, "RustDesk.toml"), tomlContent);
-                    File.WriteAllText(Path.Combine(localConfigDir, "RustDesk2.toml"), tomlContent);
-                }
+                File.WriteAllText(filePath, tomlContent);
             }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[SessionLauncher] Erro ao gravar configs RustDesk: {ex.Message}");
-            }
+            catch { }
         }
 
         public async Task<Process?> LaunchSessionAsync(Machine machine, string password, Action<ActiveSession> onSessionTerminated, Action<string>? statusCallback = null)
@@ -118,36 +156,36 @@ key = '{serverKey}'
             {
                 EnsureRustDeskClientConfig();
                 var exePath = await EnsureSessionExecutableAsync(statusCallback);
-                if (!File.Exists(exePath))
+
+                var uri = $"rustdesk://{machine.RustdeskId}";
+                if (!string.IsNullOrEmpty(password))
                 {
-                    Debug.WriteLine($"[SessionLauncher] Executável não encontrado: {exePath}");
+                    uri += $"?password={Uri.EscapeDataString(password)}";
                 }
 
-                var serverKey = Environment.GetEnvironmentVariable("BIPDESK_SERVER_KEY") ?? "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw=";
+                Process? proc = null;
+                var startTime = DateTime.UtcNow;
 
-                // Garante que o executável receba a configuração do servidor via flag CLI antes de abrir a conexão
-                try
+                if (File.Exists(exePath))
                 {
-                    var cfgProc = Process.Start(new ProcessStartInfo
+                    var startInfo = new ProcessStartInfo
                     {
                         FileName = exePath,
-                        Arguments = $"--config host=bipdesk.duckdns.org,key={serverKey}",
+                        Arguments = $"\"{uri}\"",
                         UseShellExecute = false,
-                        CreateNoWindow = true
-                    });
-                    cfgProc?.WaitForExit(1500);
+                        CreateNoWindow = false
+                    };
+                    proc = Process.Start(startInfo);
                 }
-                catch { }
-
-                var startInfo = new ProcessStartInfo
+                else
                 {
-                    FileName = exePath,
-                    Arguments = $"--connect {machine.RustdeskId} --password {password} --config host=bipdesk.duckdns.org,key={serverKey}",
-                    UseShellExecute = false,
-                    CreateNoWindow = false
-                };
+                    proc = Process.Start(new ProcessStartInfo
+                    {
+                        FileName = uri,
+                        UseShellExecute = true
+                    });
+                }
 
-                var proc = Process.Start(startInfo);
                 if (proc == null) return null;
 
                 var session = new ActiveSession(machine, proc);
@@ -157,6 +195,15 @@ key = '{serverKey}'
                     proc.EnableRaisingEvents = true;
                     proc.Exited += (s, e) =>
                     {
+                        // Se o processo de launcher encerrou em menos de 6 segundos, trata-se do handoff de IPC
+                        // do Flutter/RustDesk para a instância de sessão principal.
+                        var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
+                        if (elapsed < 6.0)
+                        {
+                            Debug.WriteLine($"[SessionLauncher] Processo de launcher encerrou em {elapsed:F1}s (handoff de IPC). Mantendo sessão ativa.");
+                            return;
+                        }
+
                         try
                         {
                             onSessionTerminated?.Invoke(session);
@@ -187,17 +234,26 @@ key = '{serverKey}'
             {
                 EnsureRustDeskClientConfig();
                 var exePath = await EnsureSessionExecutableAsync(statusCallback);
-                var serverKey = Environment.GetEnvironmentVariable("BIPDESK_SERVER_KEY") ?? "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw=";
+                var uri = $"rustdesk://{rustdeskId}";
 
-                var startInfo = new ProcessStartInfo
+                if (File.Exists(exePath))
                 {
-                    FileName = exePath,
-                    Arguments = $"--connect {rustdeskId} --config host=bipdesk.duckdns.org,key={serverKey}",
-                    UseShellExecute = false,
-                    CreateNoWindow = false
-                };
-
-                return Process.Start(startInfo);
+                    return Process.Start(new ProcessStartInfo
+                    {
+                        FileName = exePath,
+                        Arguments = $"\"{uri}\"",
+                        UseShellExecute = false,
+                        CreateNoWindow = false
+                    });
+                }
+                else
+                {
+                    return Process.Start(new ProcessStartInfo
+                    {
+                        FileName = uri,
+                        UseShellExecute = true
+                    });
+                }
             }
             catch (Exception ex)
             {
