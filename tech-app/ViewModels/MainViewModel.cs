@@ -36,6 +36,9 @@ namespace BipDesk.Tech.ViewModels
         private string _statusNotification = string.Empty;
         private bool _hasStatusNotification;
 
+        private ActiveSession? _currentSession;
+        private bool _isSessionViewActive;
+
         private bool _hasUpdateAvailable;
         private string _updateVersionText = string.Empty;
         private string _updateDownloadUrl = string.Empty;
@@ -59,6 +62,9 @@ namespace BipDesk.Tech.ViewModels
             ToggleFavoriteCommand = new RelayCommand(async p => await ToggleFavoriteAsync(p as Machine));
             FocusSessionCommand = new RelayCommand(p => FocusSession(p as ActiveSession));
             CloseSessionCommand = new RelayCommand(async p => await CloseSessionAsync(p as ActiveSession));
+            SwitchToMachinesListCommand = new RelayCommand(_ => SwitchToMachinesList());
+            SwitchToSessionCommand = new RelayCommand(p => SwitchToSession(p as ActiveSession));
+            CloseCurrentSessionCommand = new RelayCommand(async _ => await CloseSessionAsync(CurrentSession));
             SetFilterCommand = new RelayCommand(p => SetFilter(p?.ToString() ?? "Todas"));
             ToggleViewCommand = new RelayCommand(p => ToggleView(p?.ToString()));
             
@@ -315,12 +321,53 @@ namespace BipDesk.Tech.ViewModels
         public int OnlineCount => _rawMachines.Count(m => m.IsOnline);
         public int BusyCount => _rawMachines.Count(m => m.IsBusy);
 
+        public ActiveSession? CurrentSession
+        {
+            get => _currentSession;
+            set
+            {
+                if (_currentSession != value)
+                {
+                    _currentSession = value;
+                    foreach (var s in ActiveSessions)
+                    {
+                        s.IsCurrent = (s == value);
+                    }
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(HasCurrentSession));
+                    OnPropertyChanged(nameof(IsSessionViewActive));
+                    OnPropertyChanged(nameof(IsCatalogViewActive));
+                }
+            }
+        }
+
+        public bool HasCurrentSession => CurrentSession != null;
+
+        public bool IsSessionViewActive
+        {
+            get => _isSessionViewActive && CurrentSession != null;
+            set
+            {
+                if (_isSessionViewActive != value)
+                {
+                    _isSessionViewActive = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(IsCatalogViewActive));
+                }
+            }
+        }
+
+        public bool IsCatalogViewActive => !IsSessionViewActive;
+
         public ICommand ConnectCommand { get; }
         public ICommand RefreshCommand { get; }
         public ICommand SaveMachineInfoCommand { get; }
         public ICommand ToggleFavoriteCommand { get; }
         public ICommand FocusSessionCommand { get; }
         public ICommand CloseSessionCommand { get; }
+        public ICommand SwitchToMachinesListCommand { get; }
+        public ICommand SwitchToSessionCommand { get; }
+        public ICommand CloseCurrentSessionCommand { get; }
         public ICommand SetFilterCommand { get; }
         public ICommand ToggleViewCommand { get; }
         public ICommand RebootCommand { get; }
@@ -651,44 +698,67 @@ namespace BipDesk.Tech.ViewModels
                 }
             }
 
-            // 3. Inicia o motor de sessão oficial via protocolo URI rustdesk://
-            var proc = await _launcher.LaunchSessionAsync(machine, ticket.Password, session =>
-            {
-                Application.Current?.Dispatcher?.Invoke(() =>
+            // 3. Inicia o motor de sessão oficial via protocolo URI rustdesk:// e acopla no BipDesk Admin
+            ShowNotification($"Iniciando conexão segura com {machine.DisplayName}...");
+            var session = await _launcher.LaunchSessionAsync(
+                machine, 
+                ticket.Password, 
+                onSessionTerminated: s =>
                 {
-                    try
+                    Application.Current?.Dispatcher?.Invoke(() =>
                     {
-                        ActiveSessions.Remove(session);
-                        session.Machine.IsBusy = false;
-                        session.Machine.BusyBy = null;
-                        OnPropertyChanged(nameof(BusyCount));
-                    }
-                    catch { }
-                });
+                        try
+                        {
+                            ActiveSessions.Remove(s);
+                            s.Machine.IsBusy = false;
+                            s.Machine.BusyBy = null;
+                            OnPropertyChanged(nameof(BusyCount));
+                            if (CurrentSession == s)
+                            {
+                                CurrentSession = ActiveSessions.LastOrDefault();
+                                if (CurrentSession == null)
+                                {
+                                    IsSessionViewActive = false;
+                                }
+                            }
+                        }
+                        catch { }
+                    });
 
-                _ = Task.Run(async () =>
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await _api.ReleaseSessionAsync(machine.Id);
+                        }
+                        catch { }
+                    });
+                },
+                onWindowAttached: s =>
                 {
-                    try
+                    Application.Current?.Dispatcher?.Invoke(() =>
                     {
-                        await _api.ReleaseSessionAsync(machine.Id);
-                    }
-                    catch { }
-                });
-            }, msg => ShowNotification(msg));
+                        CurrentSession = s;
+                        IsSessionViewActive = true;
+                        ShowNotification($"Sessão conectada e acoplada: {machine.DisplayName}");
+                    });
+                },
+                statusCallback: msg => ShowNotification(msg));
 
-            if (proc != null)
+            if (session != null)
             {
                 Application.Current?.Dispatcher?.Invoke(() =>
                 {
                     var existingSession = ActiveSessions.FirstOrDefault(s => s.Machine.Id == machine.Id);
                     if (existingSession == null)
                     {
-                        var session = new ActiveSession(machine, proc);
                         ActiveSessions.Add(session);
                     }
                     machine.IsBusy = true;
                     machine.BusyBy = _api.CurrentUsername;
                     OnPropertyChanged(nameof(BusyCount));
+                    CurrentSession = session;
+                    IsSessionViewActive = true;
                 });
             }
         }
@@ -699,6 +769,16 @@ namespace BipDesk.Tech.ViewModels
             {
                 try
                 {
+                    if (session.HostControl is Views.EmbeddedSessionHost host)
+                    {
+                        host.CloseSessionWindow();
+                        host.Dispose();
+                    }
+                    else if (session.HostControl is IDisposable disp)
+                    {
+                        disp.Dispose();
+                    }
+
                     if (!session.Process.HasExited)
                     {
                         session.Process.Kill();
@@ -712,13 +792,24 @@ namespace BipDesk.Tech.ViewModels
                     session.Machine.IsBusy = false;
                     session.Machine.BusyBy = null;
                     OnPropertyChanged(nameof(BusyCount));
+                    if (CurrentSession == session)
+                    {
+                        CurrentSession = ActiveSessions.LastOrDefault();
+                        if (CurrentSession == null)
+                        {
+                            IsSessionViewActive = false;
+                        }
+                    }
                 });
 
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        await _api.ReleaseSessionAsync(session.Machine.Id);
+                        if (session.Machine.Id > 0)
+                        {
+                            await _api.ReleaseSessionAsync(session.Machine.Id);
+                        }
                     }
                     catch { }
                 });
@@ -729,7 +820,26 @@ namespace BipDesk.Tech.ViewModels
         {
             if (session != null)
             {
-                _launcher.BringToFront(session.Process);
+                CurrentSession = session;
+                IsSessionViewActive = true;
+                if (session.HostControl == null)
+                {
+                    _launcher.BringToFront(session.Process);
+                }
+            }
+        }
+
+        private void SwitchToMachinesList()
+        {
+            IsSessionViewActive = false;
+        }
+
+        private void SwitchToSession(ActiveSession? session)
+        {
+            if (session != null)
+            {
+                CurrentSession = session;
+                IsSessionViewActive = true;
             }
         }
 
@@ -971,34 +1081,46 @@ namespace BipDesk.Tech.ViewModels
 
             // 2. Conexão direta por ID avulso (Estilo TeamViewer)
             ShowNotification($"Iniciando sessão para o ID {cleanTarget}...");
-            var proc = await _launcher.LaunchDirectSessionAsync(cleanTarget, msg => ShowNotification(msg));
-            if (proc != null)
-            {
-                var directMachine = new Machine
+            var session = await _launcher.LaunchDirectSessionAsync(
+                cleanTarget,
+                onSessionTerminated: s =>
                 {
-                    Id = 0,
-                    RustdeskId = cleanTarget,
-                    Hostname = $"ID-{cleanTarget}",
-                    Alias = $"Conexão Avulsa ({cleanTarget})"
-                };
-                var session = new ActiveSession(directMachine, proc);
-                ActiveSessions.Add(session);
-                try
-                {
-                    proc.EnableRaisingEvents = true;
-                    proc.Exited += (s, e) =>
+                    try
                     {
-                        try
+                        Application.Current?.Dispatcher?.Invoke(() =>
                         {
-                            Application.Current?.Dispatcher?.Invoke(() =>
+                            ActiveSessions.Remove(s);
+                            if (CurrentSession == s)
                             {
-                                ActiveSessions.Remove(session);
-                            });
-                        }
-                        catch { }
-                    };
-                }
-                catch { }
+                                CurrentSession = ActiveSessions.LastOrDefault();
+                                if (CurrentSession == null)
+                                {
+                                    IsSessionViewActive = false;
+                                }
+                            }
+                        });
+                    }
+                    catch { }
+                },
+                onWindowAttached: s =>
+                {
+                    Application.Current?.Dispatcher?.Invoke(() =>
+                    {
+                        CurrentSession = s;
+                        IsSessionViewActive = true;
+                        ShowNotification($"Sessão conectada: ID {cleanTarget}");
+                    });
+                },
+                statusCallback: msg => ShowNotification(msg));
+
+            if (session != null)
+            {
+                Application.Current?.Dispatcher?.Invoke(() =>
+                {
+                    ActiveSessions.Add(session);
+                    CurrentSession = session;
+                    IsSessionViewActive = true;
+                });
             }
         }
 

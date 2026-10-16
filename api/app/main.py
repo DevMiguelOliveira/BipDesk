@@ -658,3 +658,24 @@ def get_app_version():
 @app.get("/healthz")
 def healthz():
     return {"status": "ok", "version": "2.1.0", "timestamp": datetime.utcnow().isoformat()}
+
+# --- RUSTDESK CLIENT COMPATIBILITY ENDPOINTS (ELIMINA ERROS 404 DE AUDITORIA E TELEMETRIA) ---
+@app.post("/api/heartbeat")
+def rustdesk_client_heartbeat():
+    return {"data": "hb"}
+
+@app.post("/api/sysinfo")
+def rustdesk_client_sysinfo():
+    return {"data": "ok"}
+
+@app.post("/api/audit/conn")
+def rustdesk_client_audit_conn():
+    return {"data": "ok"}
+
+@app.post("/api/audit/file")
+def rustdesk_client_audit_file():
+    return {"data": "ok"}
+
+@app.get("/api/server-version")
+def rustdesk_server_version():
+    return {"version": "1.2.0"}

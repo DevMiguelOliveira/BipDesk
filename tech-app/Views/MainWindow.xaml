@@ -213,6 +213,16 @@
 
         <!-- 2. FILTER BAR & VIEW TOGGLE -->
         <Border Grid.Row="1" Background="{StaticResource BrushBgDark}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,0,0,1" Padding="18,0">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Visible"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSessionViewActive}" Value="True">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <Grid VerticalAlignment="Center">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -302,8 +312,18 @@
             </StackPanel>
         </Border>
 
-        <!-- 4. MAIN 3-COLUMN WORKSPACE -->
+        <!-- 4. MAIN 3-COLUMN WORKSPACE (CATÁLOGO DE MÁQUINAS) -->
         <Grid Grid.Row="3">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Visible"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSessionViewActive}" Value="True">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
             <Grid.ColumnDefinitions>
                 <!-- Sidebar (Empresas / Clientes) -->
                 <ColumnDefinition Width="230"/>
@@ -812,8 +832,113 @@
             </Border>
         </Grid>
 
-        <!-- 5. SESSÕES ATIVAS DOCK (AUTO-HIDE QUANDO ZERO SESSÕES) -->
-        <Border Grid.Row="4" Background="#080B10" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,1,0,0" Padding="16,8">
+        <!-- 4B. TELA DE SESSÃO REMOTA ACOPLADA (ESTILO TEAMVIEWER INTEGRADO - SEM ABAS EXTERNAS) -->
+        <Grid Grid.Row="3">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSessionViewActive}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Grid.RowDefinitions>
+                <!-- Barra de Ações Rápidas da Sessão -->
+                <RowDefinition Height="50"/>
+                <!-- Canvas de Visualização do Desktop Remoto -->
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- BARRA SUPERIOR DE SUPORTE REMOTO (TOOLBAR DA SESSÃO) -->
+            <Border Grid.Row="0" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,0,0,1" Padding="14,0">
+                <Grid VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Identificação do Dispositivo Conectado -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="⬅ Voltar ao Painel" Style="{StaticResource SecondaryButtonStyle}" 
+                                Padding="10,5" Margin="0,0,14,0"
+                                Command="{Binding SwitchToMachinesListCommand}" 
+                                ToolTip="Visualizar painel de máquinas sem fechar esta sessão"/>
+
+                        <Ellipse Width="10" Height="10" Fill="{StaticResource BrushEmerald}" Margin="0,0,8,0"/>
+                        <TextBlock Text="{Binding CurrentSession.Machine.DisplayName}" FontSize="13" FontWeight="Bold" 
+                                   Foreground="{StaticResource BrushTextPrimary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+
+                        <Border Background="#0C131F" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="10" Padding="8,2" Margin="0,0,6,0">
+                            <TextBlock Text="{Binding CurrentSession.Machine.IpAddress, StringFormat='IP: {0}'}" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
+                        </Border>
+
+                        <Border Background="#0C131F" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="10" Padding="8,2">
+                            <TextBlock Text="{Binding CurrentSession.Machine.FormattedRustdeskId, StringFormat='ID: {0}'}" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Ferramentas Rápidas de Helpdesk (Execução Silenciosa) -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Button Content="📶 Ping" Style="{StaticResource IconButtonStyle}" Padding="8,4" Margin="0,0,6,0"
+                                Command="{Binding PingMachineCommand}" CommandParameter="{Binding CurrentSession.Machine}" ToolTip="Testar tempo de resposta"/>
+                        <Button Content="🖨️ Spooler" Style="{StaticResource IconButtonStyle}" Padding="8,4" Margin="0,0,6,0"
+                                Command="{Binding RestartSpoolerCommand}" CommandParameter="{Binding CurrentSession.Machine}" ToolTip="Reiniciar spooler de impressão"/>
+                        <Button Content="🧹 Flush DNS" Style="{StaticResource IconButtonStyle}" Padding="8,4" Margin="0,0,6,0"
+                                Command="{Binding FlushDnsCommand}" CommandParameter="{Binding CurrentSession.Machine}" ToolTip="Limpar cache DNS"/>
+                        <Button Content="🔒 Bloquear" Style="{StaticResource IconButtonStyle}" Padding="8,4" Margin="0,0,6,0"
+                                Command="{Binding LockWorkstationCommand}" CommandParameter="{Binding CurrentSession.Machine}" ToolTip="Bloquear sessão do Windows"/>
+                        <Button Content="🔄 Reiniciar" Style="{StaticResource IconButtonStyle}" Padding="8,4" Margin="0,0,6,0"
+                                Command="{Binding RebootCommand}" CommandParameter="{Binding CurrentSession.Machine}" ToolTip="Reiniciar computador do cliente"/>
+                    </StackPanel>
+
+                    <!-- Encerrar Sessão -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="✕ Encerrar Conexão" Style="{StaticResource DangerButtonStyle}" 
+                                Padding="12,5" FontWeight="SemiBold"
+                                Command="{Binding CloseCurrentSessionCommand}" 
+                                ToolTip="Desconectar e finalizar acesso remoto"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- CANVAS DE VISUALIZAÇÃO ACOPLADA -->
+            <Grid Grid.Row="1" Background="#000000">
+                <!-- Indicador de Inicialização / Conexão em Progresso -->
+                <Grid Background="#090D16">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding CurrentSession.IsAttached}" Value="False">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+                    <Border Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" 
+                            CornerRadius="14" Padding="32,24" HorizontalAlignment="Center" VerticalAlignment="Center" Width="440">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="⚡" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,12" Foreground="{StaticResource BrushEmerald}"/>
+                            <TextBlock Text="Conectando à Sessão Remota BipDesk..." FontSize="16" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                            <TextBlock Text="Inicializando display gráfico e acoplando janela..." FontSize="12" Foreground="{StaticResource BrushTextSecondary}" HorizontalAlignment="Center" Margin="0,0,0,18"/>
+                            <ProgressBar IsIndeterminate="True" Height="4" Background="#1E293B" Foreground="{StaticResource BrushEmerald}" BorderThickness="0" Margin="0,0,0,18"/>
+                            <Button Content="Cancelar Conexão" Style="{StaticResource WarningButtonStyle}" HorizontalAlignment="Center" Padding="14,6" Command="{Binding CloseCurrentSessionCommand}"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- Controle Hospedeiro da Janela Remota Win32 (HwndHost) -->
+                <ContentControl Content="{Binding CurrentSession.HostControl}"
+                                HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                Focusable="True"/>
+            </Grid>
+        </Grid>
+
+        <!-- 5. SESSÕES ATIVAS DOCK (ESTILO TABS TEAMVIEWER) -->
+        <Border Grid.Row="4" Background="#080B10" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,1,0,0" Padding="14,6">
             <Border.Style>
                 <Style TargetType="Border">
                     <Setter Property="Visibility" Value="Visible"/>
@@ -830,9 +955,38 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" Text="Sessões Remotas Abertas:" FontSize="11" FontWeight="SemiBold" 
-                           Foreground="{StaticResource BrushTextSecondary}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <!-- Botão Tab: Catálogo de Máquinas -->
+                <Button Grid.Column="0" Command="{Binding SwitchToMachinesListCommand}" Margin="0,0,10,0" Cursor="Hand" Padding="10,4">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource BrushBorder}"/>
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="12" Padding="{TemplateBinding Padding}">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="💻 Painel de Máquinas" FontSize="11" Foreground="{TemplateBinding Foreground}"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Setter Property="Foreground" Value="{StaticResource BrushTextSecondary}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsCatalogViewActive}" Value="True">
+                                    <Setter Property="Background" Value="{StaticResource BrushSurfaceActive}"/>
+                                    <Setter Property="BorderBrush" Value="{StaticResource BrushEmerald}"/>
+                                    <Setter Property="Foreground" Value="{StaticResource BrushEmerald}"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
 
+                <!-- Abas das Sessões Ativas -->
                 <ItemsControl Grid.Column="1" ItemsSource="{Binding ActiveSessions}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -841,16 +995,40 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type models:ActiveSession}">
-                            <!-- SESSION CHIP -->
-                            <Border Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushEmerald}" 
-                                    BorderThickness="1" CornerRadius="12" Padding="8,3" Margin="0,0,8,0" Cursor="Hand">
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Ellipse Width="6" Height="6" Fill="{StaticResource BrushEmerald}" Margin="0,0,6,0"/>
-                                    <TextBlock Text="{Binding Machine.DisplayName}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}" Margin="0,0,8,0"/>
-                                    <Button Content="✕" FontSize="10" Foreground="{StaticResource BrushRed}" Background="Transparent" BorderThickness="0" 
-                                            Command="{Binding DataContext.CloseSessionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                            CommandParameter="{Binding}" Cursor="Hand"/>
-                                </StackPanel>
+                            <!-- Tab da Sessão -->
+                            <Border CornerRadius="12" Margin="0,0,6,0" Cursor="Hand">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="{StaticResource BrushSurface}"/>
+                                        <Setter Property="BorderBrush" Value="{StaticResource BrushBorder}"/>
+                                        <Setter Property="BorderThickness" Value="1"/>
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding IsCurrent}" Value="True"/>
+                                                    <Condition Binding="{Binding DataContext.IsSessionViewActive, RelativeSource={RelativeSource AncestorType=Window}}" Value="True"/>
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Background" Value="{StaticResource BrushEmeraldBg}"/>
+                                                <Setter Property="BorderBrush" Value="{StaticResource BrushEmerald}"/>
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Grid>
+                                    <Button Background="Transparent" BorderThickness="0" Padding="10,4"
+                                            Command="{Binding DataContext.SwitchToSessionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Ellipse Width="7" Height="7" Fill="{StaticResource BrushEmerald}" Margin="0,0,6,0"/>
+                                            <TextBlock Text="{Binding Machine.DisplayName}" FontSize="11" FontWeight="SemiBold" 
+                                                       Foreground="{StaticResource BrushTextPrimary}" Margin="0,0,8,0"/>
+                                            <Button Content="✕" FontSize="10" Foreground="{StaticResource BrushRed}" Background="Transparent" BorderThickness="0" 
+                                                    Command="{Binding DataContext.CloseSessionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}" Cursor="Hand" Padding="2,0"
+                                                    ToolTip="Encerrar esta sessão"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>

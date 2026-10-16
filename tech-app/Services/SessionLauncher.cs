@@ -3,9 +3,11 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using BipDesk.Tech.Models;
+using BipDesk.Tech.Views;
 
 namespace BipDesk.Tech.Services
 {
@@ -17,6 +19,18 @@ namespace BipDesk.Tech.Services
 
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
         private const int SW_RESTORE = 9;
 
@@ -43,6 +57,51 @@ namespace BipDesk.Tech.Services
             }
             catch { }
             return null;
+        }
+
+        public static async Task<IntPtr> WaitForSessionWindowAsync(int timeoutMs = 10000)
+        {
+            var end = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            while (DateTime.UtcNow < end)
+            {
+                IntPtr found = IntPtr.Zero;
+                EnumWindows((hwnd, lParam) =>
+                {
+                    if (IsWindowVisible(hwnd))
+                    {
+                        var sb = new StringBuilder(256);
+                        GetClassName(hwnd, sb, sb.Capacity);
+                        if (sb.ToString() == "RustdeskMultiWindow")
+                        {
+                            found = hwnd;
+                            return false;
+                        }
+                    }
+                    return true;
+                }, IntPtr.Zero);
+
+                if (found != IntPtr.Zero) return found;
+                await Task.Delay(250);
+            }
+            return IntPtr.Zero;
+        }
+
+        public static void EnsureBipDeskAssetBranding()
+        {
+            try
+            {
+                var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                var iconPath = Path.Combine(localAppData, "rustdesk", "data", "flutter_assets", "assets", "icon.svg");
+                if (File.Exists(iconPath))
+                {
+                    var svg = @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 24 24"" width=""24"" height=""24"">
+  <rect width=""24"" height=""24"" rx=""5"" fill=""#10B981""/>
+  <path d=""M13 2L3 14h9l-1 8 10-12h-9l1-8z"" fill=""#FFFFFF""/>
+</svg>";
+                    File.WriteAllText(iconPath, svg);
+                }
+            }
+            catch { }
         }
 
         public string FindSessionExecutable()
@@ -150,11 +209,17 @@ key = '{serverKey}'
             catch { }
         }
 
-        public async Task<Process?> LaunchSessionAsync(Machine machine, string password, Action<ActiveSession> onSessionTerminated, Action<string>? statusCallback = null)
+        public async Task<ActiveSession?> LaunchSessionAsync(
+            Machine machine, 
+            string password, 
+            Action<ActiveSession> onSessionTerminated, 
+            Action<ActiveSession>? onWindowAttached = null,
+            Action<string>? statusCallback = null)
         {
             try
             {
                 EnsureRustDeskClientConfig();
+                EnsureBipDeskAssetBranding();
                 var exePath = await EnsureSessionExecutableAsync(statusCallback);
 
                 var uri = $"rustdesk://{machine.RustdeskId}";
@@ -195,8 +260,6 @@ key = '{serverKey}'
                     proc.EnableRaisingEvents = true;
                     proc.Exited += (s, e) =>
                     {
-                        // Se o processo de launcher encerrou em menos de 6 segundos, trata-se do handoff de IPC
-                        // do Flutter/RustDesk para a instância de sessão principal.
                         var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
                         if (elapsed < 6.0)
                         {
@@ -219,7 +282,30 @@ key = '{serverKey}'
                     Debug.WriteLine($"[SessionLauncher] Erro ao configurar Exited event: {ex.Message}");
                 }
 
-                return proc;
+                // Captura e acopla a janela remota diretamente dentro do BipDesk Admin
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var hwnd = await WaitForSessionWindowAsync(10000);
+                        if (hwnd != IntPtr.Zero)
+                        {
+                            session.WindowHandle = hwnd;
+                            System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
+                            {
+                                var host = new EmbeddedSessionHost(hwnd, $"BipDesk - {machine.DisplayName}");
+                                session.HostControl = host;
+                                onWindowAttached?.Invoke(session);
+                            });
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[SessionLauncher] Erro ao acoplar janela remota: {ex.Message}");
+                    }
+                });
+
+                return session;
             }
             catch (Exception ex)
             {
@@ -228,38 +314,20 @@ key = '{serverKey}'
             }
         }
 
-        public async Task<Process?> LaunchDirectSessionAsync(string rustdeskId, Action<string>? statusCallback = null)
+        public async Task<ActiveSession?> LaunchDirectSessionAsync(
+            string rustdeskId, 
+            Action<ActiveSession> onSessionTerminated, 
+            Action<ActiveSession>? onWindowAttached = null, 
+            Action<string>? statusCallback = null)
         {
-            try
+            var directMachine = new Machine
             {
-                EnsureRustDeskClientConfig();
-                var exePath = await EnsureSessionExecutableAsync(statusCallback);
-                var uri = $"rustdesk://{rustdeskId}";
-
-                if (File.Exists(exePath))
-                {
-                    return Process.Start(new ProcessStartInfo
-                    {
-                        FileName = exePath,
-                        Arguments = $"\"{uri}\"",
-                        UseShellExecute = false,
-                        CreateNoWindow = false
-                    });
-                }
-                else
-                {
-                    return Process.Start(new ProcessStartInfo
-                    {
-                        FileName = uri,
-                        UseShellExecute = true
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[SessionLauncher] Erro ao iniciar sessão direta: {ex.Message}");
-                return null;
-            }
+                Id = 0,
+                RustdeskId = rustdeskId,
+                Hostname = $"ID-{rustdeskId}",
+                Alias = $"Conexão Avulsa ({rustdeskId})"
+            };
+            return await LaunchSessionAsync(directMachine, "", onSessionTerminated, onWindowAttached, statusCallback);
         }
 
         public void BringToFront(Process process)
