@@ -13,13 +13,18 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Go 1.24
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
         with:
           go-version: '1.24'
           cache: false
+
+      - name: Run Tests
+        working-directory: ./agent
+        run: |
+          go test -v ./...
 
       - name: Build Windows Binary
         working-directory: ./agent
@@ -30,11 +35,20 @@ jobs:
           $env:GOARCH = "amd64"
           go install github.com/tc-hib/go-winres@latest
           & "$((go env GOPATH))\bin\go-winres.exe" make
-          mkdir -p ../dist/agent
+          New-Item -ItemType Directory -Force -Path ../dist/agent | Out-Null
           go build -ldflags "-s -w -H=windowsgui" -o ../dist/agent/bipdesk-agent.exe main.go
 
+      - name: Generate SHA-256 Checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 ./dist/agent/bipdesk-agent.exe).Hash
+          "$hash  bipdesk-agent.exe" | Out-File -FilePath ./dist/agent/bipdesk-agent.exe.sha256 -Encoding ascii
+          Write-Host "Generated SHA-256: $hash"
+
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
           name: BipDesk_Host_Agent_Windows_x64
-          path: ./dist/agent/bipdesk-agent.exe
+          path: |
+            ./dist/agent/bipdesk-agent.exe
+            ./dist/agent/bipdesk-agent.exe.sha256

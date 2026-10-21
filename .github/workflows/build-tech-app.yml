@@ -13,10 +13,10 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup .NET 8 SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@3951f328a4a583e74ca67c4730703a1824199a1e # v4.3.0
         with:
           dotnet-version: '8.0.x'
 
@@ -26,26 +26,34 @@ jobs:
       - name: Build and Publish Single-File Executable
         run: dotnet publish tech-app/BipDesk.Tech.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o ./dist/admin
 
-      - name: Package Admin Bundle (Com BipDesk_Session)
+      - name: Generate SHA-256 Checksum
         shell: pwsh
         run: |
-          try {
-            Invoke-WebRequest -Uri "https://bipdesk.duckdns.org/downloads/BipDesk_Session.exe" -OutFile "./dist/admin/BipDesk_Session.exe" -TimeoutSec 15
-          } catch {
-            Write-Warning "Servidor offline durante empacotamento do bundle, incluindo apenas o executável..."
-          }
+          $hash = (Get-FileHash -Algorithm SHA256 ./dist/admin/BipDesk_Admin.exe).Hash
+          "$hash  BipDesk_Admin.exe" | Out-File -FilePath ./dist/admin/BipDesk_Admin.exe.sha256 -Encoding ascii
+          Write-Host "BipDesk_Admin.exe SHA-256: $hash"
+
+      - name: Package Admin Bundle
+        shell: pwsh
+        run: |
           New-Item -ItemType Directory -Force -Path "./dist/bundle" | Out-Null
           Copy-Item ./dist/admin/* ./dist/bundle/ -Recurse -Force
           Compress-Archive -Path ./dist/bundle/* -DestinationPath ./dist/BipDesk_Admin_Completo.zip -Force
+          $zipHash = (Get-FileHash -Algorithm SHA256 ./dist/BipDesk_Admin_Completo.zip).Hash
+          "$zipHash  BipDesk_Admin_Completo.zip" | Out-File -FilePath ./dist/BipDesk_Admin_Completo.zip.sha256 -Encoding ascii
 
       - name: Upload Standalone Admin Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
           name: BipDesk_Admin_Windows_x64
-          path: ./dist/admin/BipDesk_Admin.exe
+          path: |
+            ./dist/admin/BipDesk_Admin.exe
+            ./dist/admin/BipDesk_Admin.exe.sha256
 
-      - name: Upload Full Bundle Artifact (Admin + Session)
-        uses: actions/upload-artifact@v4
+      - name: Upload Full Bundle Artifact
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
           name: BipDesk_Admin_Completo_Zip
-          path: ./dist/BipDesk_Admin_Completo.zip
+          path: |
+            ./dist/BipDesk_Admin_Completo.zip
+            ./dist/BipDesk_Admin_Completo.zip.sha256

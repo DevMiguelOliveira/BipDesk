@@ -9,13 +9,15 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Download Upstream Engine 1.4.9
         shell: pwsh
         run: |
           Invoke-WebRequest -Uri "https://github.com/rustdesk/rustdesk/releases/download/1.4.9/rustdesk-1.4.9-x86_64.exe" -OutFile "rustdesk-raw.exe"
-          mkdir -p dist/session
+          New-Item -ItemType Directory -Force -Path dist/session | Out-Null
+          $hash = (Get-FileHash -Algorithm SHA256 rustdesk-raw.exe).Hash
+          Write-Host "Upstream Engine SHA-256: $hash"
 
       - name: Setup Resource Hacker CLI
         shell: pwsh
@@ -63,8 +65,17 @@ jobs:
             Copy-Item "rustdesk-raw.exe" "dist/session/BipDesk_Session.exe"
           }
 
+      - name: Generate SHA-256 Checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 ./dist/session/BipDesk_Session.exe).Hash
+          "$hash  BipDesk_Session.exe" | Out-File -FilePath ./dist/session/BipDesk_Session.exe.sha256 -Encoding ascii
+          Write-Host "BipDesk_Session.exe SHA-256: $hash"
+
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
           name: BipDesk_Session_Windows_x64
-          path: ./dist/session/BipDesk_Session.exe
+          path: |
+            ./dist/session/BipDesk_Session.exe
+            ./dist/session/BipDesk_Session.exe.sha256

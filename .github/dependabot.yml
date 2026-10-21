@@ -1,0 +1,41 @@
+version: 2
+updates:
+  # Monitoramento de GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+
+  # Monitoramento do Agente Go
+  - package-ecosystem: "gomod"
+    directory: "/agent"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(agent)"
+
+  # Monitoramento da API Python / FastAPI
+  - package-ecosystem: "pip"
+    directory: "/api"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(api)"
+
+  # Monitoramento do Console WPF (.NET 8)
+  - package-ecosystem: "nuget"
+    directory: "/tech-app"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(tech-app)"
+
+  # Monitoramento de Contêineres Docker
+  - package-ecosystem: "docker"
+    directory: "/deploy"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(deploy)"
