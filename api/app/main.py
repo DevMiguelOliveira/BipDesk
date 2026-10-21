@@ -1,5 +1,7 @@
 import os
 import re
+import hmac
+import hashlib
 import secrets
 import logging
 import sqlite3
@@ -7,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from fastapi.responses import JSONResponse
@@ -20,11 +22,11 @@ from .database import engine, Base, get_db, auto_migrate
 from .models import User, Machine, EnrollToken, ConnectionAudit, RemoteCommand, MachineNote
 from .security import (
     verify_password, get_password_hash,
-    encrypt_password, decrypt_password,
+    encrypt_password, decrypt_password, rotate_encrypted_password,
     create_access_token, decode_access_token
 )
 
-# Configurar logging
+# Configurar logging seguro
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -56,17 +58,21 @@ def startup_populate():
     db = next(get_db())
     admin = db.query(User).filter(User.username == "admin").first()
     if not admin:
-        # NUNCA usar senha default hardcoded em produção
         default_pwd = os.getenv("ADMIN_PASSWORD")
         if not default_pwd:
-            # Gerar senha aleatória se não fornecida
-            import string
-            default_pwd = ''.join(secrets.choice(string.ascii_letters + string.digits + "!@#$%&*") for _ in range(20))
-            logger.warning(
-                "ADMIN_PASSWORD não configurado. Senha gerada automaticamente: %s. "
-                "Defina a variável de ambiente para usar uma senha específica.",
-                default_pwd
-            )
+            env_mode = os.getenv("ENV", "production").lower()
+            if env_mode == "development":
+                import string
+                default_pwd = ''.join(secrets.choice(string.ascii_letters + string.digits + "!@#$%&*") for _ in range(20))
+                logger.warning(
+                    "[DEV MODE] ADMIN_PASSWORD não configurado. Senha gerada temporariamente para primeiro acesso: %s",
+                    default_pwd
+                )
+            else:
+                raise RuntimeError(
+                    "CRÍTICO: ADMIN_PASSWORD não configurado no ambiente. "
+                    "Defina a variável de ambiente ADMIN_PASSWORD para a criação inicial do superusuário."
+                )
 
         admin = User(
             username="admin",
@@ -76,7 +82,7 @@ def startup_populate():
         )
         db.add(admin)
         db.commit()
-        logger.info("[BipDesk Enterprise] Super Admin criado: admin")
+        logger.info("[BipDesk Enterprise] Super Admin inicial criado com sucesso: admin")
     else:
         if not getattr(admin, "role", None) or admin.role != "admin":
             admin.role = "admin"
@@ -85,10 +91,15 @@ def startup_populate():
         db.commit()
     db.close()
 
-# ----------------- Schemas -----------------
+# ----------------- Health Check -----------------
+@app.get("/healthz")
+def health_check():
+    return {"status": "ok", "service": "bipdesk-api", "version": "2.4.0"}
+
+# ----------------- Schemas com Validação Pydantic (A12) -----------------
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9_.-]+$")
+    password: str = Field(..., min_length=6, max_length=128)
 
 class LoginResponse(BaseModel):
     access_token: str
@@ -98,10 +109,10 @@ class LoginResponse(BaseModel):
     role: str
 
 class TechnicianCreateRequest(BaseModel):
-    username: str
-    password: str
-    full_name: str
-    role: str = "technician"
+    username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9_.-]+$")
+    password: str = Field(..., min_length=8, max_length=128)
+    full_name: str = Field(..., min_length=2, max_length=100)
+    role: str = Field("technician", pattern=r"^(admin|technician)$")
 
 class TechnicianResponse(BaseModel):
     id: int
@@ -112,8 +123,8 @@ class TechnicianResponse(BaseModel):
     created_at: datetime
 
 class ChangePasswordRequest(BaseModel):
-    old_password: str
-    new_password: str
+    old_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
 
 class MachineResponse(BaseModel):
     id: int
@@ -131,6 +142,10 @@ class MachineResponse(BaseModel):
     os_version: Optional[str]
     ip_address: Optional[str]
     last_seen_at: datetime
+    cpu_usage: int = 0
+    ram_usage: int = 0
+    disk_free_gb: int = 0
+    cpu_model: Optional[str] = None
 
 class GroupSummaryResponse(BaseModel):
     name: str
@@ -138,25 +153,29 @@ class GroupSummaryResponse(BaseModel):
     online_machines: int
 
 class MachineUpdateRequest(BaseModel):
-    alias: Optional[str] = None
-    notes: Optional[str] = None
+    alias: Optional[str] = Field(None, max_length=64)
+    notes: Optional[str] = Field(None, max_length=2000)
     is_favorite: Optional[bool] = None
-    client_group: Optional[str] = None
-    department: Optional[str] = None
+    client_group: Optional[str] = Field(None, max_length=64)
+    department: Optional[str] = Field(None, max_length=64)
 
 class EnrollRequest(BaseModel):
-    token: Optional[str] = "direct"
-    rustdesk_id: str
-    hostname: str
-    username: Optional[str] = None
-    os_version: Optional[str] = None
-    ip_address: Optional[str] = None
-    password: str
+    token: Optional[str] = Field("direct", max_length=64)
+    rustdesk_id: str = Field(..., min_length=6, max_length=32, pattern=r"^[a-zA-Z0-9_-]+$")
+    hostname: str = Field(..., min_length=1, max_length=64)
+    username: Optional[str] = Field(None, max_length=64)
+    os_version: Optional[str] = Field(None, max_length=64)
+    ip_address: Optional[str] = Field(None, max_length=45)
+    password: str = Field(..., min_length=8, max_length=128)
 
 class HeartbeatRequest(BaseModel):
-    rustdesk_id: str
-    logged_in_user: Optional[str] = None
-    ip_address: Optional[str] = None
+    rustdesk_id: str = Field(..., min_length=6, max_length=32, pattern=r"^[a-zA-Z0-9_-]+$")
+    logged_in_user: Optional[str] = Field(None, max_length=64)
+    ip_address: Optional[str] = Field(None, max_length=45)
+    cpu_usage: Optional[int] = Field(None, ge=0, le=100)
+    ram_usage: Optional[int] = Field(None, ge=0, le=100)
+    disk_free_gb: Optional[int] = Field(None, ge=0)
+    cpu_model: Optional[str] = Field(None, max_length=128)
 
 class ConnectResponse(BaseModel):
     rustdesk_id: str
@@ -166,8 +185,8 @@ class ConnectResponse(BaseModel):
     busy_by: Optional[str] = None
 
 class RemoteCommandRequest(BaseModel):
-    command_type: str # "reboot", "message", "restart_spooler"
-    payload: Optional[str] = None
+    command_type: str = Field(..., pattern=r"^(cad|restart_spooler|flush_dns|lock|reboot)$")
+    payload: Optional[str] = Field(None, max_length=256)
 
 class RemoteCommandResponse(BaseModel):
     id: int
@@ -178,7 +197,7 @@ class RemoteCommandResponse(BaseModel):
     created_at: datetime
 
 class MachineNoteCreateRequest(BaseModel):
-    content: str
+    content: str = Field(..., min_length=1, max_length=2000)
 
 class MachineNoteResponse(BaseModel):
     id: int
@@ -303,13 +322,34 @@ def list_groups(current_user: User = Depends(get_current_user), db: Session = De
         for name, data in sorted(grouped.items())
     ]
 
+@app.get("/api/server-key")
+def get_server_key():
+    """Retorna a chave pública do servidor de sinalização (HBBS) para configuração de novos clientes"""
+    pubkey_path = os.getenv("SERVER_PUBKEY_PATH", "/server-keys/id_ed25519.pub")
+    if os.path.exists(pubkey_path):
+        try:
+            with open(pubkey_path, "r", encoding="utf-8") as f:
+                return {"pubkey": f.read().strip()}
+        except Exception:
+            pass
+    return {"pubkey": ""}
+
 @app.get("/api/machines", response_model=List[MachineResponse])
-def list_machines(group: Optional[str] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_machines(
+    group: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 1000,
+    since: Optional[datetime] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     query = db.query(Machine)
     if group and group != "Todas":
         query = query.filter(Machine.client_group == group)
+    if since:
+        query = query.filter(Machine.last_seen_at >= since)
     
-    machines = query.order_by(Machine.is_favorite.desc(), Machine.last_seen_at.desc()).all()
+    machines = query.order_by(Machine.is_favorite.desc(), Machine.last_seen_at.desc()).offset(skip).limit(limit).all()
     hbbs_peers = get_registered_hbbs_peer_ids()
     result = []
     now_utc = datetime.utcnow()
@@ -345,11 +385,25 @@ def list_machines(group: Optional[str] = None, current_user: User = Depends(get_
             logged_in_user=m.logged_in_user,
             os_version=m.os_version,
             ip_address=m.ip_address,
-            last_seen_at=m.last_seen_at
+            last_seen_at=m.last_seen_at,
+            cpu_usage=m.cpu_usage or 0,
+            ram_usage=m.ram_usage or 0,
+            disk_free_gb=m.disk_free_gb or 0,
+            cpu_model=m.cpu_model
         ))
-    # Commit once after processing all machines
     db.commit()
     return result
+
+@app.post("/api/machines/{machine_id}/release")
+def release_machine(machine_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Libera forçadamente uma máquina que está com status 'Em atendimento'"""
+    machine = db.query(Machine).filter(Machine.id == machine_id).first()
+    if not machine:
+        raise HTTPException(status_code=404, detail="Máquina não encontrada")
+    machine.current_session_tech = None
+    machine.session_started_at = None
+    db.commit()
+    return {"status": "released", "machine_id": machine_id}
 
 @app.patch("/api/machines/{machine_id}")
 def update_machine(machine_id: int, req: MachineUpdateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -505,6 +559,7 @@ def sanitize_rustdesk_id(raw_id: Optional[str]) -> str:
     return cleaned[:32]
 
 @app.post("/api/agent/enroll")
+@limiter.limit("15/minute")
 def agent_enroll(req: EnrollRequest, request: Request, db: Session = Depends(get_db)):
     clean_id = sanitize_rustdesk_id(req.rustdesk_id)
     if not clean_id or len(clean_id) < 6:
@@ -518,6 +573,7 @@ def agent_enroll(req: EnrollRequest, request: Request, db: Session = Depends(get
     else:
         req.hostname = f"Host-{clean_id}"
 
+    # Validação do token de enrollment
     if req.token and req.token not in ["direct", "auto"]:
         token_entry = db.query(EnrollToken).filter(
             EnrollToken.token == req.token,
@@ -525,15 +581,20 @@ def agent_enroll(req: EnrollRequest, request: Request, db: Session = Depends(get
             EnrollToken.expires_at > datetime.utcnow()
         ).first()
         if not token_entry:
-            raise HTTPException(status_code=400, detail="Token de instalação inválido ou expirado")
+            raise HTTPException(status_code=403, detail="Token de instalação inválido ou expirado")
         token_entry.is_used = True
-    
-    # Prioriza o IP local real da máquina (ipconfig) reportado pelo agent.
-    # Fallback para o IP da conexão HTTP apenas se não foi fornecido.
+    elif os.getenv("ENV", "production").lower() != "development":
+        # Em produção, rejeita tokens genéricos 'direct' ou 'auto'
+        raise HTTPException(status_code=403, detail="Token de enrollment obrigatório para registro de novos computadores.")
+
     reported_ip = (req.ip_address or "").strip()
     client_ip = reported_ip if (reported_ip and not reported_ip.startswith("127.")) else (request.client.host if request.client else None)
 
-    # Verifica se já existe por ID limpo ou legado corrompido que termina com esse ID
+    # Gera token de alta entropia exclusivo para esta máquina (ADR-001)
+    machine_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(machine_token.encode()).hexdigest()
+
+    # Verifica se já existe por ID limpo
     machine = db.query(Machine).filter(Machine.rustdesk_id == req.rustdesk_id).first()
     if not machine:
         machine = db.query(Machine).filter(Machine.rustdesk_id.like(f"%{req.rustdesk_id}")).first()
@@ -551,6 +612,9 @@ def agent_enroll(req: EnrollRequest, request: Request, db: Session = Depends(get
             os_version=req.os_version,
             ip_address=client_ip,
             encrypted_password=encrypt_password(req.password),
+            token_hash=token_hash,
+            token_created_at=datetime.utcnow(),
+            token_revoked=False,
             last_seen_at=datetime.utcnow()
         )
         db.add(machine)
@@ -562,78 +626,108 @@ def agent_enroll(req: EnrollRequest, request: Request, db: Session = Depends(get
         if req.os_version: machine.os_version = req.os_version
         if client_ip: machine.ip_address = client_ip
         machine.encrypted_password = encrypt_password(req.password)
+        machine.token_hash = token_hash
+        machine.token_created_at = datetime.utcnow()
+        machine.token_revoked = False
         machine.last_seen_at = datetime.utcnow()
 
     db.commit()
-    return {"status": "enrolled", "machine_id": machine.id}
+
+    # Lê chave pública do HBBS para repassar ao agente
+    pubkey = ""
+    pubkey_path = os.getenv("SERVER_PUBKEY_PATH", "/server-keys/id_ed25519.pub")
+    if os.path.exists(pubkey_path):
+        try:
+            with open(pubkey_path, "r", encoding="utf-8") as f:
+                pubkey = f.read().strip()
+        except Exception:
+            pass
+
+    return {
+        "status": "enrolled",
+        "machine_id": machine.id,
+        "machine_token": machine_token,
+        "server_key": pubkey
+    }
 
 @app.post("/api/agent/heartbeat")
-def agent_heartbeat(req: HeartbeatRequest, request: Request, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def agent_heartbeat(
+    req: HeartbeatRequest,
+    request: Request,
+    x_machine_token: Optional[str] = Header(None, alias="X-Machine-Token"),
+    db: Session = Depends(get_db)
+):
     clean_id = sanitize_rustdesk_id(req.rustdesk_id)
     if not clean_id or len(clean_id) < 6:
         raise HTTPException(status_code=400, detail="ID RustDesk inválido ou não detectado.")
     req.rustdesk_id = clean_id
 
     machine = db.query(Machine).filter(Machine.rustdesk_id == req.rustdesk_id).first()
-    # Auto-healing: se não encontrou por ID limpo, verifica se há registro antigo com o ID no final
     if not machine:
         machine = db.query(Machine).filter(Machine.rustdesk_id.like(f"%{req.rustdesk_id}")).first()
         if machine:
-            logger.info("Auto-reparando máquina %s para ID limpo %s", machine.id, req.rustdesk_id)
             machine.rustdesk_id = req.rustdesk_id
-            if not machine.alias or "skip" in machine.alias or len(machine.alias) > 64:
-                machine.alias = f"Host-{req.rustdesk_id}"
-            if not machine.hostname or "skip" in machine.hostname or len(machine.hostname) > 64:
-                machine.hostname = f"Host-{req.rustdesk_id}"
             db.commit()
+
+    # Eliminação do auto-registro inseguro (A5)
+    if not machine:
+        raise HTTPException(
+            status_code=404,
+            detail="Máquina não cadastrada. O host deve ser previamente cadastrado via token de enrollment."
+        )
+
+    # Validação estrita do token criptográfico da máquina (A6 / ADR-001)
+    if not x_machine_token:
+        raise HTTPException(
+            status_code=401,
+            detail="Autenticação obrigatória. Forneça o cabeçalho X-Machine-Token."
+        )
+
+    provided_hash = hashlib.sha256(x_machine_token.encode()).hexdigest()
+    if machine.token_revoked or not machine.token_hash or not hmac.compare_digest(machine.token_hash, provided_hash):
+        raise HTTPException(
+            status_code=403,
+            detail="Token de máquina inválido ou revogado."
+        )
 
     reported_ip = (req.ip_address or "").strip()
     has_reported_lan_ip = bool(reported_ip and not reported_ip.startswith("127."))
     
-    if not machine:
-        # Auto-registro em caso de primeiro contato via heartbeat
-        default_pwd = os.getenv("HOST_PASSWORD")
-        if not default_pwd:
-            default_pwd = secrets.token_urlsafe(12)
-            logger.info("[BipDesk Enterprise] Senha do host gerada para %s: %s", req.rustdesk_id, default_pwd)
-        machine = Machine(
-            rustdesk_id=req.rustdesk_id,
-            hostname=f"Host-{req.rustdesk_id}",
-            alias=f"Host-{req.rustdesk_id}",
-            client_group="Geral",
-            department="Geral",
-            logged_in_user=req.logged_in_user,
-            ip_address=reported_ip if has_reported_lan_ip else (request.client.host if request.client else None),
-            encrypted_password=encrypt_password(default_pwd),
-            last_seen_at=datetime.utcnow()
-        )
-        db.add(machine)
-        db.commit()
-        db.refresh(machine)
-    
     machine.last_seen_at = datetime.utcnow()
     if req.logged_in_user: machine.logged_in_user = req.logged_in_user
-    # Se o agente enviou o IP real da LAN (ipconfig), atualiza.
-    # Se não foi fornecido, apenas preenche com o IP de conexão se estiver vazio.
     if has_reported_lan_ip:
         machine.ip_address = reported_ip
     elif not machine.ip_address:
         machine.ip_address = request.client.host if request.client else None
 
-    # Busca comandos pendentes para o agente executar
+    # Atualiza telemetria de hardware
+    if req.cpu_usage is not None: machine.cpu_usage = req.cpu_usage
+    if req.ram_usage is not None: machine.ram_usage = req.ram_usage
+    if req.disk_free_gb is not None: machine.disk_free_gb = req.disk_free_gb
+    if req.cpu_model: machine.cpu_model = req.cpu_model
+
+    # Busca comandos pendentes para o agente executar e assina criptograficamente (ADR-002)
     pending_cmds = db.query(RemoteCommand).filter(
         RemoteCommand.machine_id == machine.id,
         RemoteCommand.status == "pending"
     ).all()
 
     cmds_to_return = []
+    now_ts = int(datetime.utcnow().timestamp())
     for c in pending_cmds:
+        nonce = secrets.token_hex(16)
+        msg_to_sign = f"{c.command_type}:{machine.rustdesk_id}:{nonce}:{now_ts}"
+        sig = hmac.new(machine.token_hash.encode(), msg_to_sign.encode(), hashlib.sha256).hexdigest()
         cmds_to_return.append({
             "id": c.id,
             "type": c.command_type,
-            "payload": c.payload
+            "payload": c.payload,
+            "nonce": nonce,
+            "timestamp": now_ts,
+            "signature": sig
         })
-        c.status = "executed"
+        c.status = "dispatched"
         c.executed_at = datetime.utcnow()
 
     db.commit()

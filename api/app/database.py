@@ -4,11 +4,20 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./bipdesk.db")
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
-    pool_pre_ping=True
-)
+# Normalizar URLs do PostgreSQL / Supabase
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+engine_kwargs = {"pool_pre_ping": True}
+if "sqlite" in DATABASE_URL:
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    # Configurações otimizadas para Supabase / PostgreSQL (Pooler ou Direto)
+    engine_kwargs["pool_recycle"] = 300
+    engine_kwargs["pool_size"] = int(os.getenv("DB_POOL_SIZE", "5"))
+    engine_kwargs["max_overflow"] = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 
 # Configurações de alta performance para SQLite WAL
 if "sqlite" in DATABASE_URL:
@@ -26,6 +35,9 @@ Base = declarative_base()
 
 def auto_migrate(engine_instance):
     """Aplica migrações incrementais no SQLite de forma não destrutiva para colunas adicionadas"""
+    if "sqlite" not in DATABASE_URL:
+        return
+
     from sqlalchemy import text
     migrations = [
         # Tabela users
@@ -36,6 +48,13 @@ def auto_migrate(engine_instance):
         "ALTER TABLE machines ADD COLUMN department VARCHAR(100) DEFAULT 'Geral'",
         "ALTER TABLE machines ADD COLUMN current_session_tech VARCHAR(50)",
         "ALTER TABLE machines ADD COLUMN session_started_at DATETIME",
+        "ALTER TABLE machines ADD COLUMN cpu_usage INTEGER DEFAULT 0",
+        "ALTER TABLE machines ADD COLUMN ram_usage INTEGER DEFAULT 0",
+        "ALTER TABLE machines ADD COLUMN disk_free_gb INTEGER DEFAULT 0",
+        "ALTER TABLE machines ADD COLUMN cpu_model VARCHAR(100)",
+        "ALTER TABLE machines ADD COLUMN token_hash VARCHAR(64)",
+        "ALTER TABLE machines ADD COLUMN token_created_at DATETIME",
+        "ALTER TABLE machines ADD COLUMN token_revoked BOOLEAN DEFAULT 0",
         # Tabela connection_audits
         "ALTER TABLE connection_audits ADD COLUMN machine_name VARCHAR(100)",
         "ALTER TABLE connection_audits ADD COLUMN client_group VARCHAR(100)",

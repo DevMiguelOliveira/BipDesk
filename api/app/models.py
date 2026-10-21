@@ -35,9 +35,20 @@ class Machine(Base):
     mac_address = Column(String(45), nullable=True)
     last_seen_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
     
+    # Métricas de Hardware em Tempo Real
+    cpu_usage = Column(Integer, default=0) # 0-100%
+    ram_usage = Column(Integer, default=0) # 0-100%
+    disk_free_gb = Column(Integer, default=0)
+    cpu_model = Column(String(100), nullable=True)
+    
     # Controle de Concorrência Multi-Técnico
     current_session_tech = Column(String(50), nullable=True) # Técnico conectado no momento
     session_started_at = Column(DateTime, nullable=True)
+
+    # Autenticação Criptográfica do Agente (ADR-001)
+    token_hash = Column(String(64), nullable=True, index=True)
+    token_created_at = Column(DateTime, nullable=True)
+    token_revoked = Column(Boolean, default=False)
 
     # Credencial cifrada (para conexão sem intervenção do usuário)
     encrypted_password = Column(Text, nullable=False)
