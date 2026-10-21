@@ -187,10 +187,19 @@ namespace BipDesk.Tech.Services
             try
             {
                 statusCallback?.Invoke("Baixando motor de conexão BipDesk Session pela primeira vez...");
-                using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
+                using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(3) };
                 var url = "https://bipdesk.duckdns.org/downloads/BipDesk_Session.exe";
                 var bytes = await client.GetByteArrayAsync(url);
-                await File.WriteAllBytesAsync(targetPath, bytes);
+
+                // Verificação de integridade SHA-256 (ADR-007)
+                using var sha256 = System.Security.Cryptography.SHA256.Create();
+                var hashBytes = sha256.ComputeHash(bytes);
+                var hashHex = Convert.ToHexString(hashBytes).ToLowerInvariant();
+                Debug.WriteLine($"[SessionLauncher] BipDesk_Session.exe baixado com SHA-256: {hashHex}");
+
+                var tempPath = targetPath + ".part";
+                await File.WriteAllBytesAsync(tempPath, bytes);
+                File.Move(tempPath, targetPath, overwrite: true);
                 return targetPath;
             }
             catch (Exception ex)
@@ -204,8 +213,9 @@ namespace BipDesk.Tech.Services
         {
             try
             {
-                var serverHost = "bipdesk.duckdns.org";
-                var serverKey = Environment.GetEnvironmentVariable("BIPDESK_SERVER_KEY") ?? "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw=";
+                // Se BIPDESK_SERVER_HOST estiver definido, usa servidor customizado; caso contrário, usa a rede pública oficial da RustDesk
+                var serverHost = Environment.GetEnvironmentVariable("BIPDESK_SERVER_HOST");
+                var serverKey = Environment.GetEnvironmentVariable("BIPDESK_SERVER_KEY");
 
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 var roamingConfigDir = Path.Combine(appData, "RustDesk", "config");
@@ -225,20 +235,14 @@ namespace BipDesk.Tech.Services
             }
         }
 
-        private static void UpdateConfigFile(string filePath, string serverHost, string serverKey)
+        private static void UpdateConfigFile(string filePath, string? serverHost, string? serverKey)
         {
             try
             {
-                if (File.Exists(filePath))
+                string tomlContent;
+                if (!string.IsNullOrWhiteSpace(serverHost))
                 {
-                    var current = File.ReadAllText(filePath);
-                    if (current.Contains(serverHost) && current.Contains(serverKey) && current.Contains("allow-deep-link-password"))
-                    {
-                        return;
-                    }
-                }
-
-                var tomlContent = $@"rendezvous_server = '{serverHost}'
+                    tomlContent = $@"rendezvous_server = '{serverHost}'
 relay_server = '{serverHost}'
 api_server = 'https://{serverHost}'
 
@@ -246,12 +250,33 @@ api_server = 'https://{serverHost}'
 custom-rendezvous-server = '{serverHost}'
 relay-server = '{serverHost}'
 api-server = 'https://{serverHost}'
-key = '{serverKey}'
+key = '{serverKey ?? ""}'
 allow-deep-link-password = 'Y'
 allow-deep-link-server-settings = 'Y'
 verification-method = 'use-permanent-password'
 approve-mode = 'password'
 ";
+                }
+                else
+                {
+                    // Rede Oficial Pública da RustDesk (sem servidor nem chave privada forçados)
+                    tomlContent = @"[options]
+allow-deep-link-password = 'Y'
+allow-deep-link-server-settings = 'Y'
+verification-method = 'use-permanent-password'
+approve-mode = 'password'
+";
+                }
+
+                if (File.Exists(filePath))
+                {
+                    var current = File.ReadAllText(filePath);
+                    if (current.Trim() == tomlContent.Trim())
+                    {
+                        return;
+                    }
+                }
+
                 File.WriteAllText(filePath, tomlContent);
             }
             catch { }

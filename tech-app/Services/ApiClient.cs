@@ -24,25 +24,21 @@ namespace BipDesk.Tech.Services
         {
             var handler = new HttpClientHandler
             {
-                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+                // Verificação de certificados TLS nativa estrita da cadeia do sistema (ADR-005 / R4)
+                CheckCertificateRevocationList = false
             };
             _http = new HttpClient(handler);
-            _http.Timeout = TimeSpan.FromSeconds(12);
+            _http.Timeout = TimeSpan.FromSeconds(15);
         }
 
         public async Task<bool> LoginAsync(string username, string password)
         {
-            var debugFile = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BipDesk", "autologin_debug.txt");
             try
             {
                 var payload = new { username, password };
-                try { System.IO.File.AppendAllText(debugFile, $"[ApiClient] POST {BaseUrl}/api/login with user={username}...\n"); } catch { }
                 var resp = await _http.PostAsJsonAsync($"{BaseUrl}/api/login", payload);
-                try { System.IO.File.AppendAllText(debugFile, $"[ApiClient] Response status: {(int)resp.StatusCode} {resp.StatusCode}\n"); } catch { }
                 if (!resp.IsSuccessStatusCode)
                 {
-                    var errBody = await resp.Content.ReadAsStringAsync();
-                    try { System.IO.File.AppendAllText(debugFile, $"[ApiClient] Error body: {errBody}\n"); } catch { }
                     return false;
                 }
 
@@ -56,14 +52,13 @@ namespace BipDesk.Tech.Services
                     if (data.TryGetProperty("full_name", out var fn)) CurrentFullName = fn.GetString();
                     if (data.TryGetProperty("role", out var r)) CurrentRole = r.GetString() ?? "technician";
 
-                    try { System.IO.File.AppendAllText(debugFile, $"[ApiClient] Token acquired successfully for {CurrentUsername}!\n"); } catch { }
                     return true;
                 }
             }
             catch (Exception ex)
             {
-                try { System.IO.File.AppendAllText(debugFile, $"[ApiClient] EXCEPTION: {ex}\n"); } catch { }
                 System.Diagnostics.Debug.WriteLine($"[ApiClient] Login error: {ex.Message}");
+                throw;
             }
             return false;
         }
@@ -220,6 +215,16 @@ namespace BipDesk.Tech.Services
             try
             {
                 var resp = await _http.DeleteAsync($"{BaseUrl}/api/machines/{machineId}");
+                return resp.IsSuccessStatusCode;
+            }
+            catch { return false; }
+        }
+
+        public async Task<bool> ReleaseMachineAsync(int machineId)
+        {
+            try
+            {
+                var resp = await _http.PostAsync($"{BaseUrl}/api/machines/{machineId}/release", null);
                 return resp.IsSuccessStatusCode;
             }
             catch { return false; }

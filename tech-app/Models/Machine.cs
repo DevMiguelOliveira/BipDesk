@@ -233,6 +233,75 @@ namespace BipDesk.Tech.Models
             }
         }
 
+        private int _cpuUsage;
+        private int _ramUsage;
+        private int _diskFreeGb;
+        private string? _cpuModel;
+
+        [JsonPropertyName("cpu_usage")]
+        public int CpuUsage
+        {
+            get => _cpuUsage;
+            set
+            {
+                if (_cpuUsage != value)
+                {
+                    _cpuUsage = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(CpuUsageText));
+                    OnPropertyChanged(nameof(CpuProgress));
+                    OnPropertyChanged(nameof(CpuUsageColor));
+                }
+            }
+        }
+
+        [JsonPropertyName("ram_usage")]
+        public int RamUsage
+        {
+            get => _ramUsage;
+            set
+            {
+                if (_ramUsage != value)
+                {
+                    _ramUsage = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(RamUsageText));
+                    OnPropertyChanged(nameof(RamProgress));
+                    OnPropertyChanged(nameof(RamUsageColor));
+                }
+            }
+        }
+
+        [JsonPropertyName("disk_free_gb")]
+        public int DiskFreeGb
+        {
+            get => _diskFreeGb;
+            set
+            {
+                if (_diskFreeGb != value)
+                {
+                    _diskFreeGb = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(DiskFreeText));
+                }
+            }
+        }
+
+        [JsonPropertyName("cpu_model")]
+        public string? CpuModel
+        {
+            get => _cpuModel;
+            set
+            {
+                if (_cpuModel != value)
+                {
+                    _cpuModel = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(CpuModelDisplay));
+                }
+            }
+        }
+
         [JsonPropertyName("last_seen_at")]
         public DateTime LastSeenAt
         {
@@ -259,6 +328,10 @@ namespace BipDesk.Tech.Models
             OsVersion = other.OsVersion;
             Hostname = other.Hostname;
             RustdeskId = other.RustdeskId;
+            CpuUsage = other.CpuUsage;
+            RamUsage = other.RamUsage;
+            DiskFreeGb = other.DiskFreeGb;
+            CpuModel = other.CpuModel;
 
             if (updateEditableFields)
             {
@@ -269,6 +342,17 @@ namespace BipDesk.Tech.Models
                 IsFavorite = other.IsFavorite;
             }
         }
+
+        public string CpuUsageText => $"{CpuUsage}%";
+        public string RamUsageText => $"{RamUsage}%";
+        public double CpuProgress => Math.Clamp(CpuUsage, 0, 100);
+        public double RamProgress => Math.Clamp(RamUsage, 0, 100);
+        public string CpuUsageColor => CpuUsage > 85 ? "#EF4444" : (CpuUsage > 60 ? "#F59E0B" : "#10B981");
+        public string RamUsageColor => RamUsage > 85 ? "#EF4444" : (RamUsage > 70 ? "#F59E0B" : "#10B981");
+        public string DiskFreeText => DiskFreeGb > 0 ? $"{DiskFreeGb} GB livres" : "--";
+        public string CpuModelDisplay => !string.IsNullOrWhiteSpace(CpuModel) ? CpuModel : "Processador Padrão";
+        public string BusyBannerText => IsBusy ? (string.IsNullOrWhiteSpace(BusyBy) ? "Em atendimento" : $"Em atendimento por @{BusyBy}") : "";
+        public bool HasHardwareTelemetry => CpuUsage > 0 || RamUsage > 0;
 
         // Propriedades calculadas para exibição rápida e virtualizada
         public string DisplayName => !string.IsNullOrWhiteSpace(Alias) ? Alias : Hostname;

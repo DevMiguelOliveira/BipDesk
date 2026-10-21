@@ -164,9 +164,17 @@ namespace BipDesk.Tech.Views
                     ShowError("Usuário ou senha incorretos.");
                 }
             }
+            catch (System.Threading.Tasks.TaskCanceledException)
+            {
+                ShowError("Tempo limite esgotado. O servidor está offline ou inacessível.");
+            }
+            catch (System.Net.Http.HttpRequestException)
+            {
+                ShowError($"Não foi possível conectar ao servidor ({ServerUrl}). Verifique sua internet ou se o servidor está online.");
+            }
             catch (Exception ex)
             {
-                ShowError($"Erro ao conectar: {ex.Message}");
+                ShowError($"Erro de conexão: {ex.Message}");
             }
             finally
             {

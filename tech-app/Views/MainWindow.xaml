@@ -342,6 +342,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <TextBlock Grid.Row="0" Text="EMPRESAS &amp; CLIENTES" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BrushTextSecondary}" Margin="4,2,0,10"/>
@@ -368,6 +369,35 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+
+                    <!-- Resumo do Parque (Tempo Real) -->
+                    <Border Grid.Row="2" Background="#0C131F" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,10,0,0">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,6">
+                                <TextBlock Text="Resumo do Parque" FontSize="10" FontWeight="Bold" Foreground="{StaticResource BrushTextSecondary}"/>
+                                <TextBlock Text="Tempo Real" FontSize="9" Foreground="{StaticResource BrushEmerald}" HorizontalAlignment="Right"/>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" HorizontalAlignment="Center">
+                                    <TextBlock Text="Total" FontSize="9" Foreground="{StaticResource BrushTextMuted}" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding TotalCount}" FontSize="13" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+                                    <TextBlock Text="Online" FontSize="9" Foreground="{StaticResource BrushTextMuted}" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding OnlineCount}" FontSize="13" FontWeight="Bold" Foreground="{StaticResource BrushEmerald}" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Center">
+                                    <TextBlock Text="Em Sessão" FontSize="9" Foreground="{StaticResource BrushTextMuted}" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding BusyCount}" FontSize="13" FontWeight="Bold" Foreground="{StaticResource BrushAmber}" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </Grid>
             </Border>
 
@@ -409,7 +439,7 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="{x:Type models:Machine}">
                             <!-- MACHINE CARD -->
-                            <Border Width="280" Height="200" Background="{StaticResource BrushSurface}" 
+                            <Border Width="290" MinHeight="225" Background="{StaticResource BrushSurface}" 
                                     BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" 
                                     CornerRadius="10" Padding="14" MouseDown="Card_MouseDown"
                                     ContextMenu="{StaticResource MachineContextMenu}">
@@ -431,14 +461,20 @@
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
 
-                                    <!-- Top: Status Pill + Interactive Favorite Star -->
+                                    <!-- Top: Status Pill + Department + Interactive Favorite Star -->
                                     <Grid Grid.Row="0">
-                                        <Border HorizontalAlignment="Left" Background="{Binding StatusBadgeBg}" CornerRadius="10" Padding="8,3">
-                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <Ellipse Width="6" Height="6" Margin="0,0,6,0" Fill="{Binding StatusColor}"/>
-                                                <TextBlock Text="{Binding StatusShortText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding StatusColor}"/>
-                                            </StackPanel>
-                                        </Border>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                            <Border Background="{Binding StatusBadgeBg}" CornerRadius="10" Padding="8,3" Margin="0,0,6,0">
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <Ellipse Width="6" Height="6" Margin="0,0,6,0" Fill="{Binding StatusColor}"/>
+                                                    <TextBlock Text="{Binding StatusShortText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding StatusColor}"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <!-- Pill de Grupo/Setor -->
+                                            <Border Background="#0C131F" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="8" Padding="6,2">
+                                                <TextBlock Text="{Binding Department}" FontSize="10" Foreground="{StaticResource BrushTextMuted}" MaxWidth="110" TextTrimming="CharacterEllipsis"/>
+                                            </Border>
+                                        </StackPanel>
 
                                         <!-- Botão Favorito Interativo (☆ / ★) -->
                                         <Button HorizontalAlignment="Right" Style="{StaticResource StarButtonStyle}"
@@ -448,10 +484,34 @@
                                         </Button>
                                     </Grid>
 
-                                    <!-- Middle: Display Info -->
+                                    <!-- Middle: Display Info, Busy Banner & Gauges -->
                                     <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="0,6">
                                         <TextBlock Text="{Binding DisplayName}" FontSize="15" FontWeight="SemiBold" 
                                                    Foreground="{StaticResource BrushTextPrimary}" TextTrimming="CharacterEllipsis"/>
+
+                                        <!-- Faixa Âmbar: Em atendimento por @... com Botão [Liberar] -->
+                                        <Border Background="{StaticResource BrushAmberBg}" BorderBrush="{StaticResource BrushAmber}" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,4,0,2">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding BusyBannerText}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource BrushAmber}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                <Button Grid.Column="1" Content="Liberar" Style="{StaticResource DangerButtonStyle}" Padding="6,1" FontSize="9"
+                                                        Command="{Binding DataContext.ForceReleaseSessionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}" ToolTip="Liberar máquina forçadamente"/>
+                                            </Grid>
+                                        </Border>
                                         
                                         <!-- ID Pill com 1-Click Copy -->
                                         <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
@@ -467,13 +527,53 @@
                                         </StackPanel>
 
                                         <TextBlock Text="{Binding SubtitleText}" FontSize="11" Foreground="{StaticResource BrushBlue}" 
-                                                   TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/>
+                                                   TextTrimming="CharacterEllipsis" Margin="0,3,0,2"/>
+
+                                        <!-- Gauges de CPU e RAM em Tempo Real -->
+                                        <Grid Margin="0,4,0,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="10"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <!-- CPU -->
+                                            <StackPanel Grid.Column="0">
+                                                <Grid Margin="0,0,0,2">
+                                                    <TextBlock Text="CPU" FontSize="9" FontWeight="SemiBold" Foreground="{StaticResource BrushTextMuted}"/>
+                                                    <TextBlock Text="{Binding CpuUsageText}" FontSize="9" FontWeight="Bold" Foreground="{Binding CpuUsageColor}" HorizontalAlignment="Right"/>
+                                                </Grid>
+                                                <ProgressBar Style="{StaticResource ModernProgressBarStyle}" Value="{Binding CpuProgress, Mode=OneWay}" 
+                                                             Foreground="{Binding CpuUsageColor}"/>
+                                            </StackPanel>
+                                            <!-- RAM -->
+                                            <StackPanel Grid.Column="2">
+                                                <Grid Margin="0,0,0,2">
+                                                    <TextBlock Text="RAM" FontSize="9" FontWeight="SemiBold" Foreground="{StaticResource BrushTextMuted}"/>
+                                                    <TextBlock Text="{Binding RamUsageText}" FontSize="9" FontWeight="Bold" Foreground="{Binding RamUsageColor}" HorizontalAlignment="Right"/>
+                                                </Grid>
+                                                <ProgressBar Style="{StaticResource ModernProgressBarStyle}" Value="{Binding RamProgress, Mode=OneWay}" 
+                                                             Foreground="{Binding RamUsageColor}"/>
+                                            </StackPanel>
+                                        </Grid>
                                     </StackPanel>
 
                                     <!-- Bottom: Quick Action Connect -->
-                                    <Button Grid.Row="2" Content="⚡ CONECTAR (Enter)" Style="{StaticResource ConnectButtonStyle}"
+                                    <Button Grid.Row="2" Style="{StaticResource ConnectButtonStyle}"
                                             Command="{Binding DataContext.ConnectCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                            CommandParameter="{Binding}" HorizontalAlignment="Stretch"/>
+                                            CommandParameter="{Binding}" HorizontalAlignment="Stretch">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource ConnectButtonStyle}">
+                                                <Setter Property="Content" Value="⚡ INICIAR CONEXÃO"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsOnline}" Value="False">
+                                                        <Setter Property="Content" Value="🔌 Desconectado"/>
+                                                        <Setter Property="IsEnabled" Value="False"/>
+                                                        <Setter Property="Opacity" Value="0.45"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
                                 </Grid>
                             </Border>
                         </DataTemplate>
@@ -901,8 +1001,49 @@
                         </Border>
                     </StackPanel>
 
-                    <!-- Ferramentas Rápidas de Helpdesk (Execução Silenciosa) -->
+                    <!-- Ferramentas Rápidas de Helpdesk (Execução Silenciosa) & Modos de Visualização -->
                     <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <!-- Alternador de Subview (Desktop Remoto vs Diagnóstico em Tempo Real) -->
+                        <Border Background="#0C131F" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="6" Padding="2" Margin="0,0,14,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="🖥️ Área de Trabalho" Padding="10,4" Margin="0,0,2,0"
+                                        Command="{Binding SwitchSessionSubViewCommand}" CommandParameter="Display">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                                            <Setter Property="BorderThickness" Value="0"/>
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Setter Property="Foreground" Value="{StaticResource BrushTextSecondary}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsDisplaySubView}" Value="True">
+                                                    <Setter Property="Background" Value="{StaticResource BrushEmerald}"/>
+                                                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                <Button Content="⚡ Diagnóstico" Padding="10,4"
+                                        Command="{Binding SwitchSessionSubViewCommand}" CommandParameter="Diagnostics">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                                            <Setter Property="BorderThickness" Value="0"/>
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Setter Property="Foreground" Value="{StaticResource BrushTextSecondary}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsDiagnosticsSubView}" Value="True">
+                                                    <Setter Property="Background" Value="{StaticResource BrushEmerald}"/>
+                                                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                        <Button Content="⌨️ Ctrl+Alt+Del" Style="{StaticResource SecondaryButtonStyle}" Padding="8,4" Margin="0,0,8,0"
+                                Command="{Binding SendCtrlAltDelCommand}" ToolTip="Enviar sinal seguro Ctrl+Alt+Del"/>
+
                         <Button Content="📶 Ping" Style="{StaticResource IconButtonStyle}" Padding="8,4" Margin="0,0,6,0"
                                 Command="{Binding PingMachineCommand}" CommandParameter="{Binding CurrentSession.Machine}" ToolTip="Testar tempo de resposta"/>
                         <Button Content="🖨️ Spooler" Style="{StaticResource IconButtonStyle}" Padding="8,4" Margin="0,0,6,0"
@@ -954,7 +1095,205 @@
                 <!-- Controle Hospedeiro da Janela Remota Win32 (HwndHost) -->
                 <ContentControl Content="{Binding CurrentSession.HostControl}"
                                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                                Focusable="True"/>
+                                Focusable="True">
+                    <ContentControl.Style>
+                        <Style TargetType="ContentControl">
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDiagnosticsSubView}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ContentControl.Style>
+                </ContentControl>
+
+                <!-- PAINEL DE DIAGNÓSTICO E TELEMETRIA EM TEMPO REAL -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Background="#0A0E17">
+                    <ScrollViewer.Style>
+                        <Style TargetType="ScrollViewer">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDiagnosticsSubView}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ScrollViewer.Style>
+                    <Grid MaxWidth="1000" Margin="24,24,24,40" HorizontalAlignment="Center">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Cabeçalho do Painel de Diagnóstico -->
+                        <Border Grid.Row="0" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="12" Padding="20,16" Margin="0,0,0,18">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <TextBlock Text="⚡" FontSize="18" Foreground="{StaticResource BrushEmerald}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Diagnóstico &amp; Telemetria em Tempo Real" FontSize="16" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Monitoramento contínuo de recursos vitais e ferramentas de suporte de baixo nível." FontSize="12" Foreground="{StaticResource BrushTextSecondary}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border Background="#121D2F" BorderBrush="{StaticResource BrushEmerald}" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                        <TextBlock Text="Sessão Ativa" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushEmerald}"/>
+                                    </Border>
+                                    <Border Background="#1C2536" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="6" Padding="8,4">
+                                        <TextBlock Text="{Binding CurrentSession.Machine.Department, StringFormat='Setor: {0}'}" FontSize="11" Foreground="{StaticResource BrushTextSecondary}"/>
+                                    </Border>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- Grid de Métricas de Hardware (CPU, RAM, Disco) -->
+                        <Grid Grid.Row="1" Margin="0,0,0,18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Card CPU -->
+                            <Border Grid.Column="0" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,0,8,0">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <TextBlock Text="⚙️ Processador (CPU)" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}"/>
+                                        <TextBlock Text="{Binding CurrentSession.Machine.CpuUsageText}" HorizontalAlignment="Right" FontSize="16" FontWeight="Bold" Foreground="{Binding CurrentSession.Machine.CpuUsageColor}"/>
+                                    </Grid>
+                                    <ProgressBar Value="{Binding CurrentSession.Machine.CpuProgress}" Maximum="100" 
+                                                 Foreground="{Binding CurrentSession.Machine.CpuUsageColor}" 
+                                                 Style="{StaticResource ModernProgressBarStyle}" Height="8" Margin="0,0,0,10"/>
+                                    <TextBlock Text="{Binding CurrentSession.Machine.CpuModelDisplay}" FontSize="11" Foreground="{StaticResource BrushTextMuted}" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Card RAM -->
+                            <Border Grid.Column="1" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="12" Padding="16" Margin="4,0,4,0">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <TextBlock Text="🧠 Memória RAM" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}"/>
+                                        <TextBlock Text="{Binding CurrentSession.Machine.RamUsageText}" HorizontalAlignment="Right" FontSize="16" FontWeight="Bold" Foreground="{Binding CurrentSession.Machine.RamUsageColor}"/>
+                                    </Grid>
+                                    <ProgressBar Value="{Binding CurrentSession.Machine.RamProgress}" Maximum="100" 
+                                                 Foreground="{Binding CurrentSession.Machine.RamUsageColor}" 
+                                                 Style="{StaticResource ModernProgressBarStyle}" Height="8" Margin="0,0,0,10"/>
+                                    <TextBlock Text="Alocação física de memória do host cliente" FontSize="11" Foreground="{StaticResource BrushTextMuted}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Card Disco C: -->
+                            <Border Grid.Column="2" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="12" Padding="16" Margin="8,0,0,0">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <TextBlock Text="💾 Armazenamento (C:)" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource BrushTextSecondary}"/>
+                                        <TextBlock Text="{Binding CurrentSession.Machine.DiskFreeText}" HorizontalAlignment="Right" FontSize="16" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}"/>
+                                    </Grid>
+                                    <ProgressBar Value="65" Maximum="100" 
+                                                 Foreground="{StaticResource BrushEmerald}" 
+                                                 Style="{StaticResource ModernProgressBarStyle}" Height="8" Margin="0,0,0,10"/>
+                                    <TextBlock Text="Espaço livre disponível na partição do sistema" FontSize="11" Foreground="{StaticResource BrushTextMuted}"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Informações do Túnel & Segurança -->
+                        <Border Grid.Row="2" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="12" Padding="18,16" Margin="0,0,0,18">
+                            <StackPanel>
+                                <TextBlock Text="🔒 Túnel Criptografado de Acesso Remoto" FontSize="13" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}" Margin="0,0,0,12"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="Criptografia" FontSize="11" Foreground="{StaticResource BrushTextMuted}"/>
+                                        <TextBlock Text="Ed25519 + ChaCha20-Poly1305" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="Servidor Rendezvous (HBBS)" FontSize="11" Foreground="{StaticResource BrushTextMuted}"/>
+                                        <TextBlock Text="bipdesk.duckdns.org:21115" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BrushEmerald}" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="Servidor Relay (HBBR)" FontSize="11" Foreground="{StaticResource BrushTextMuted}"/>
+                                        <TextBlock Text="bipdesk.duckdns.org:21117" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BrushEmerald}" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Ações Rápidas de Manutenção (Grid com botões grandes) -->
+                        <Border Grid.Row="3" Background="{StaticResource BrushSurface}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="12" Padding="18,16">
+                            <StackPanel>
+                                <TextBlock Text="🛠️ Ferramentas Rápidas de Manutenção" FontSize="13" FontWeight="Bold" Foreground="{StaticResource BrushTextPrimary}" Margin="0,0,0,12"/>
+                                <WrapPanel>
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,10" Padding="14,10"
+                                            Command="{Binding SendCtrlAltDelCommand}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="⌨️" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Enviar Ctrl+Alt+Del" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}"/>
+                                                <TextBlock Text="Desbloquear logon / chamar Gerenciador" FontSize="10" Foreground="{StaticResource BrushTextMuted}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Button>
+
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,10" Padding="14,10"
+                                            Command="{Binding RestartSpoolerCommand}" CommandParameter="{Binding CurrentSession.Machine}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="🖨️" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Reiniciar Spooler" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}"/>
+                                                <TextBlock Text="Destrava impressões pendentes" FontSize="10" Foreground="{StaticResource BrushTextMuted}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Button>
+
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,10" Padding="14,10"
+                                            Command="{Binding FlushDnsCommand}" CommandParameter="{Binding CurrentSession.Machine}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="🧹" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Limpar DNS (Flush)" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}"/>
+                                                <TextBlock Text="Renova resolução de nomes de rede" FontSize="10" Foreground="{StaticResource BrushTextMuted}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Button>
+
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,10" Padding="14,10"
+                                            Command="{Binding LockWorkstationCommand}" CommandParameter="{Binding CurrentSession.Machine}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="🔒" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Bloquear Estação" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}"/>
+                                                <TextBlock Text="Bloqueia tela do usuário imediatamente" FontSize="10" Foreground="{StaticResource BrushTextMuted}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Button>
+
+                                    <Button Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,10" Padding="14,10"
+                                            Command="{Binding RebootCommand}" CommandParameter="{Binding CurrentSession.Machine}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="🔄" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Reiniciar Máquina" FontWeight="SemiBold" Foreground="{StaticResource BrushTextPrimary}"/>
+                                                <TextBlock Text="Reinicialização controlada do Windows" FontSize="10" Foreground="{StaticResource BrushTextMuted}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Button>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
             </Grid>
         </Grid>
 

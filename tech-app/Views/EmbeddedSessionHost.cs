@@ -116,7 +116,16 @@ namespace BipDesk.Tech.Views
                 SetWindowLong(_childHwnd, GWL_EXSTYLE, exStyle);
 
                 // Acopla a janela na árvore visual do BipDesk Admin
-                SetParent(_childHwnd, hwndParent.Handle);
+                var parentRes = SetParent(_childHwnd, hwndParent.Handle);
+                if (parentRes == IntPtr.Zero)
+                {
+                    Debug.WriteLine("[EmbeddedSessionHost] SetParent falhou. Revertendo para janela flutuante nativa.");
+                    var origStyle = GetWindowLong(_childHwnd, GWL_STYLE);
+                    origStyle = (origStyle & ~WS_CHILD) | WS_POPUP | WS_CAPTION | WS_THICKFRAME;
+                    SetWindowLong(_childHwnd, GWL_STYLE, origStyle);
+                    ShowWindow(_childHwnd, 5 /* SW_SHOW */);
+                    return new HandleRef(this, IntPtr.Zero);
+                }
 
                 // Ajusta dimensões iniciais
                 var width = ActualWidth > 0 ? (int)ActualWidth : 1200;

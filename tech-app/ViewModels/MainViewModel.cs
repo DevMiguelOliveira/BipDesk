@@ -94,9 +94,14 @@ namespace BipDesk.Tech.ViewModels
             ApplyUpdateCommand = new RelayCommand(async _ => await ApplyUpdateAsync());
             CheckUpdateCommand = new RelayCommand(async _ => await CheckForUpdatesAsync(true));
 
+            // Modos de Visualização da Sessão (Área de Trabalho vs Diagnóstico)
+            SwitchSessionSubViewCommand = new RelayCommand(p => SessionSubView = p?.ToString() ?? "Display");
+            SendCtrlAltDelCommand = new RelayCommand(async _ => await SendCtrlAltDelAsync());
+
             _pollTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromSeconds(5)
+                // Intervalo de polling escalável (ADR-009: 10 segundos para mitigar sobrecarga de rede e banco)
+                Interval = TimeSpan.FromSeconds(10)
             };
             _pollTimer.Tick += async (s, e) => await PollDataAsync();
         }
@@ -366,6 +371,28 @@ namespace BipDesk.Tech.ViewModels
         }
 
         public bool IsCatalogViewActive => !IsSessionViewActive;
+
+        private string _sessionSubView = "Display";
+        public string SessionSubView
+        {
+            get => _sessionSubView;
+            set
+            {
+                if (_sessionSubView != value)
+                {
+                    _sessionSubView = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(IsDisplaySubView));
+                    OnPropertyChanged(nameof(IsDiagnosticsSubView));
+                }
+            }
+        }
+
+        public bool IsDisplaySubView => SessionSubView == "Display";
+        public bool IsDiagnosticsSubView => SessionSubView == "Diagnostics";
+
+        public ICommand SwitchSessionSubViewCommand { get; }
+        public ICommand SendCtrlAltDelCommand { get; }
 
         public ICommand ConnectCommand { get; }
         public ICommand ForceReleaseSessionCommand { get; }
@@ -889,6 +916,13 @@ namespace BipDesk.Tech.ViewModels
         }
 
         // --- Ações Remotas Silenciosas ---
+
+        private async Task SendCtrlAltDelAsync()
+        {
+            if (CurrentSession?.Machine == null) return;
+            bool ok = await _api.SendCommandAsync(CurrentSession.Machine.Id, "cad");
+            ShowNotification(ok ? $"Sinal Ctrl+Alt+Del enviado para {CurrentSession.Machine.DisplayName}." : "Falha ao enviar comando Ctrl+Alt+Del.");
+        }
 
         private async Task RebootMachineAsync(Machine? machine)
         {
