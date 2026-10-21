@@ -1,49 +1,48 @@
-# Guia de Implantação e Operação BipDesk Enterprise
+# Guia de Implantação e Operação BipDesk Server
 
-Este guia detalha o processo completo para provisionar e operar a infraestrutura de sinalização, relay e gestão do **BipDesk Enterprise** em uma instância gratuita da Oracle Cloud (1 GB de RAM), com suporte automático a HTTPS, custo zero e escalabilidade para centenas de técnicos e mais de 1.000 máquinas clientes.
+Este guia detalha o processo completo para provisionar e operar a infraestrutura de sinalização, relay e API do **BipDesk** em um servidor Linux (VPS, servidor dedicado ou nó de malha Tailscale / Headscale), com consumo inferior a 650 MB de RAM e suporte a mais de 1.000 máquinas clientes.
 
 ---
 
-## 1. Pré-Requisitos na Console Oracle Cloud
+## 1. Topologia de Rede e Hospedagem (ADR-003)
 
-### 1.1 Criar a Instância Gratuita
-- **Tipo de Instância:** `VM.Standard.E2.1.Micro` (Always Free, 1 OCPU, 1 GB RAM) ou `VM.Standard.A1.Flex` (Ampere).
-- **Sistema Operacional:** Ubuntu 22.04 LTS ou Oracle Linux 8/9.
-- **Armazenamento:** 47 GB (Always Free).
-- **Chave SSH:** Utilize a chave SSH gerada localmente (`ssh-key-2026-10-15.key`).
+O BipDesk oferece suporte a duas opções de exposição de rede:
 
-### 1.2 Configurar o Firewall da VCN (Security List)
-No painel da Oracle: **Networking > Virtual Cloud Networks > VCN > Security Lists > Default Security List**.
-Adicione as seguintes **Ingress Rules** (CIDR de Origem: `0.0.0.0/0`):
+1. **Rede Privada em Malha (Tailscale / Headscale Mesh - Recomendado):**
+   - Zero portas de entrada expostas para a internet pública aberta.
+   - Tráfego direto P2P criptografado entre técnicos e clientes.
+   - Ideal para servidores locais ou sem IP público estático.
+2. **Servidor Linux com IP Público / VPS:**
+   - Exposição via Caddy HTTPS (portas 80 e 443).
+   - Portas RustDesk: `21115/TCP`, `21116/TCP`, `21116/UDP`, `21117/TCP`.
+
+---
+
+## 2. Requisitos de Portas e Firewall
+
+Se optar por servidor Linux com IP público:
 
 | Protocolo | Porta de Destino | Finalidade |
 | :--- | :--- | :--- |
-| **TCP** | `80` | Validação Let's Encrypt / HTTP |
-| **TCP** | `443` | Caddy HTTPS (API + Downloads) |
+| **TCP** | `80` | Desafio ACME Let's Encrypt / Redirecionamento HTTPS |
+| **TCP** | `443` | Caddy HTTPS (API REST, Heartbeat e Downloads) |
 | **TCP** | `21115` | hbbs (Teste de tipo NAT) |
-| **TCP** | `21116` | hbbs (Sinalização e Heartbeat) |
-| **UDP** | `21116` | hbbs (Perfuração NAT / Registro P2P) |
-| **TCP** | `21117` | hbbr (Relay Criptografado de Vídeo) |
+| **TCP** | `21116` | hbbs (Sinalização e Registro de IDs) |
+| **UDP** | `21116` | hbbs (Perfuração NAT STUN / P2P) |
+| **TCP** | `21117` | hbbr (Relay P2P Criptografado) |
 
-> ⚠️ **Atenção:** Restrinja a porta `22 (SSH)` apenas ao seu IP público para evitar ataques de força bruta.
-
----
-
-## 2. Configurar o DuckDNS (Domínio Gratuito)
-1. Acesse [DuckDNS.org](https://www.duckdns.org) e faça login.
-2. Crie um subdomínio (exemplo: `bipdesk.duckdns.org`).
-3. Aponte o subdomínio para o **IP Público da sua VM Oracle**.
+> ⚠️ **Atenção:** A porta `8080` da API FastAPI **não** deve ser exposta publicamente. Ela roda exclusivamente na rede interna Docker `bipdesk-net`, protegida pelo Caddy.
 
 ---
 
-## 3. Preparação da VM (Execução do Bootstrap)
+## 3. Preparação do Servidor (Bootstrap)
 
-Conecte-se na VM via SSH:
+Conecte-se ao servidor Linux via SSH utilizando sua chave configurada:
 ```bash
-ssh -i ssh-key-2026-10-15.key ubuntu@<SEU-IP-ORACLE>
+ssh -i ~/.ssh/sua_chave_privada usuario@<IP_OU_HOST_DO_SERVIDOR>
 ```
 
-Clone ou transfira a pasta `deploy` para a VM e execute o bootstrap:
+Clone o repositório e execute o script de inicialização:
 ```bash
 cd /opt
 sudo git clone https://github.com/DevMiguelOliveira/BipDesk.git
@@ -53,113 +52,56 @@ sudo ./bootstrap.sh
 ```
 
 O `bootstrap.sh` realiza automaticamente:
-- Criação de **2 GB de Swap** (garante estabilidade sem OOM na VM de 1 GB).
-- Liberação do tráfego das portas do BipDesk no `iptables` interno da Oracle.
-- Instalação e inicialização do Docker Engine.
-- Criação dos volumes persistentes em `/var/lib/bipdesk-*`.
+- Criação de **2 GB de Swap** (garante estabilidade sem OOM em instâncias com 1 GB de RAM).
+- Ajustes de buffers de rede via `sysctl`.
+- Liberação das portas requeridas no firewall.
+- Inicialização do Docker Engine.
+- Criação dos volumes persistentes do sistema.
 
 ---
 
-## 4. Subir os Serviços via Docker Compose
+## 4. Configuração de Variáveis de Ambiente (.env)
 
-1. Defina a variável de ambiente do seu domínio:
+Crie o arquivo `deploy/.env` a partir do modelo seguro:
 ```bash
-export DOMAIN=bipdesk.duckdns.org
+cp .env.example .env
+nano .env
 ```
 
-2. Inicie a stack do BipDesk:
+Preencha os valores obrigatórios (ADR-004):
+- `DOMAIN`: Seu domínio ou IP no Tailscale (ex: `bipdesk.duckdns.org` ou `bipdesk.sua-rede.ts.net`).
+- `SECRET_KEY`: Chave aleatória de alta entropia para JWT (mínimo 32 caracteres).
+- `ADMIN_PASSWORD`: Senha inicial do usuário administrador.
+- `FERNET_KEYS`: Chave Fernet (ou lista separada por vírgulas para rotação).
+
+---
+
+## 5. Subir os Serviços via Docker Compose
+
+Inicie os contêineres:
 ```bash
-sudo -E docker compose up -d
+sudo docker compose up -d
 ```
 
-3. Verifique se os 4 containers estão em execução:
+Verifique o status e os healthchecks:
 ```bash
 sudo docker compose ps
 ```
-Você verá:
-- `bipdesk-hbbs` (Sinalização)
-- `bipdesk-hbbr` (Relay)
-- `bipdesk-api` (API FastAPI + SQLite WAL)
-- `bipdesk-caddy` (Proxy Reverso + Certificado SSL)
+Você verá os 4 serviços saudáveis:
+- `bipdesk-hbbs` (Sinalização - healthy)
+- `bipdesk-hbbr` (Relay P2P)
+- `bipdesk-api` (API FastAPI + SQLite WAL - healthy)
+- `bipdesk-caddy` (Proxy Reverso HTTPS - healthy)
 
 ---
 
-## 5. Extração da Chave Pública de Sinalização (RS_PUB_KEY)
+## 6. Backup Seguro do Banco de Dados
 
-O `hbbs` gera automaticamente um par de chaves Ed25519 na primeira inicialização.
-Para obter a chave pública:
+Para realizar o backup consistente do banco de dados SQLite em modo WAL (sem risco de corrupção):
 ```bash
-sudo cat /var/lib/bipdesk-server/id_ed25519.pub
+sudo ./backup-db.sh
 ```
-*Copie a string impressa (exemplo: `ABcD1234...`).*
-
-### Adicionar nos Segredos do GitHub (GitHub Secrets)
-No seu repositório no GitHub: **Settings > Secrets and variables > Actions > New repository secret**:
-1. `RENDEZVOUS_SERVER`: `bipdesk.duckdns.org`
-2. `RS_PUB_KEY`: `<conteúdo do id_ed25519.pub>`
-
----
-
-## 6. Distribuição dos Binários para Clientes
-
-Quando os workflows do GitHub Actions compilarem os executáveis, envie-os para a pasta `/var/www/bipdesk-downloads/` na VM:
+Configure uma entrada no crontab para execução diária:
 ```bash
-# Na VM:
-sudo chmod 644 /var/www/bipdesk-downloads/*
+0 3 * * * /opt/BipDesk/deploy/backup-db.sh >> /var/log/bipdesk-backup.log 2>&1
 ```
-
-Agora, o comando de 1 linha de instalação do **BipDesk Host** estará 100% operacional para qualquer máquina cliente!
-
----
-
-## 7. Atualização do Backend Enterprise na VM
-
-Para atualizar o container da API com o novo sistema multi-técnico, controle de concorrência e fila de comandos silenciosos:
-```bash
-cd /opt/BipDesk
-sudo git pull origin main
-cd deploy
-sudo docker compose up -d --build api
-```
-
-A API atualizará o banco de dados SQLite WAL automaticamente sem perder nenhuma máquina registrada.
-
----
-
-## 8. Funcionalidades Enterprise no BipDesk Admin
-
-O aplicativo do técnico (`BipDesk_Admin.exe`) agora conta com:
-1. **Controle de Concorrência Multi-Técnico:**
-   - 🟢 **Disponível (Online)**
-   - 🟡 **Em Atendimento por [Nome do Técnico]**: Exibe o nome do técnico conectado e o tempo de sessão.
-   - Caso outro técnico tente conectar, o sistema pergunta se ele deseja assumir o controle ou aguardar.
-   - Quando o técnico fecha a janela, o lock é liberado automaticamente no servidor.
-2. **Barra Lateral de Empresas / Grupos:**
-   - Visualização por empresa com contadores automáticos de máquinas online/totais (`Online/Total`).
-3. **Modo Duplo de Visualização (Cards vs Tabela Densa):**
-   - **Cards:** Visual limpo com hover glow e métricas rápidas.
-   - **Tabela Densa Virtualizada:** Desenvolvida especificamente para 1.000+ máquinas com rolagem a 60 FPS e baixo consumo de memória.
-4. **Comandos Silenciosos Rápidos (Sem Interromper o Usuário):**
-   - 🔄 **Reiniciar Computador:** Dispara reboot com aviso automático no sistema.
-   - 🖨️ **Reiniciar Spooler de Impressão:** Resolve travamentos de impressora instantaneamente.
-   - 💬 **Mensagem na Tela:** Exibe caixa de diálogo ou aviso direto na tela do usuário remoto.
-5. **Linha do Tempo de Notas Técnicas Compartilhadas:**
-   - Histórico permanente com autor, data/hora e detalhes de manutenções realizadas em cada máquina cliente.
-
----
-
-## 9. Atualizações Automáticas (Auto-Update) e Distribuição
-
-### 9.1 Atualizações Automáticas do BipDesk Admin
-- Quando você alterar o layout ou adicionar recursos no painel do técnico, basta atualizar a versão no endpoint `/api/app/version` (ex: de `2.1.0` para `2.2.0`).
-- Ao abrir o app, todos os técnicos verão o aviso: **✨ Nova versão disponível! [Atualizar Agora]**.
-- Ao clicar no botão, o `BipDesk_Admin` baixa o novo executável em segundo plano, fecha o aplicativo antigo, substitui o `.exe` e reabre o app atualizado em 2 segundos, sem precisar baixar manualmente pelo navegador.
-
-### 9.2 Zero Configuração para Técnicos (Auto-Download do Motor de Sessão)
-- O `BipDesk_Admin.exe` detecta se o `BipDesk_Session.exe` já está no computador.
-- Se não estiver, ele faz o download automático silenciosamente para `%LocalAppData%\BipDesk\` no primeiro clique em "Conectar".
-- Além disso, o GitHub Actions agora gera automaticamente o artefato **`BipDesk_Admin_Completo_Zip`** que já vem com ambos os executáveis juntos na mesma pasta compactada.
-
-### 9.3 Ícone Oficial no BipDesk Host
-- O instalador em 1 linha (`install-host.ps1`) cria automaticamente atalhos oficiais na Área de Trabalho e no Menu Iniciar com o nome **BipDesk Host** e o ícone cibernético do BipDesk.
-- O agente em segundo plano (`bipdesk-agent.exe`) possui o recurso `RT_GROUP_ICON` compilado internamente, garantindo a exibição do logotipo oficial no Windows Explorer.
