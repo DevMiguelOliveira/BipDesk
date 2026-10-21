@@ -1,0 +1,148 @@
+services:
+  # -------------------------------------------------------------
+  # BipDesk Tailscale Mesh Gateway (ADR-003)
+  # Roteamento direto ponto-a-ponto via rede privada segura Tailscale.
+  # Zero portas abertas para a internet pública.
+  # -------------------------------------------------------------
+  tailscale:
+    image: tailscale/tailscale:v1.78.2
+    container_name: bipdesk-tailscale
+    hostname: ${TS_HOSTNAME:-bipdesk-server}
+    restart: unless-stopped
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+      - TS_EXTRA_ARGS=--accept-routes --advertise-exit-node=false
+    volumes:
+      - bipdesk-tailscale-data:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    networks:
+      - bipdesk-net
+
+  # Servidor de Sinalização e Registro de IDs (BipDesk HBBS)
+  hbbs:
+    image: rustdesk/rustdesk-server:1.1.16
+    container_name: bipdesk-hbbs
+    restart: unless-stopped
+    networks:
+      - bipdesk-net
+    command: hbbs -r ${DOMAIN:-bipdesk-server}:21117 -k _
+    volumes:
+      - bipdesk-server-data:/root
+    environment:
+      - ALWAYS_USE_RELAY=N
+    deploy:
+      resources:
+        limits:
+          memory: 120M
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 21116 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      - tailscale
+
+  # Servidor de Relay para tráfego criptografado (BipDesk HBBR)
+  hbbr:
+    image: rustdesk/rustdesk-server:1.1.16
+    container_name: bipdesk-hbbr
+    restart: unless-stopped
+    networks:
+      - bipdesk-net
+    command: hbbr -k _
+    volumes:
+      - bipdesk-server-data:/root
+    deploy:
+      resources:
+        limits:
+          memory: 120M
+    depends_on:
+      - tailscale
+
+  # API de Gerenciamento, Inventário e Heartbeat (FastAPI + SQLite WAL)
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    image: bipdesk-api:1.0.0
+    container_name: bipdesk-api
+    restart: unless-stopped
+    networks:
+      - bipdesk-net
+    expose:
+      - "8080"
+    env_file:
+      - .env
+    volumes:
+      - bipdesk-api-data:/data
+      - bipdesk-secrets-data:/data/secrets
+      - bipdesk-server-data:/server-keys:ro
+      - ./downloads:/downloads:ro
+    environment:
+      - DATABASE_URL=sqlite:////data/bipdesk.db
+      - SERVER_PUBKEY_PATH=/server-keys/id_ed25519.pub
+      - PORT=8080
+      - HOST=0.0.0.0
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz').read()\" || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      - tailscale
+
+  # Proxy Reverso Caddy com HTTPS e Rate Limiting
+  caddy:
+    image: caddy:2.10.2
+    container_name: bipdesk-caddy
+    restart: unless-stopped
+    networks:
+      - bipdesk-net
+    ports:
+      # As portas do Caddy e RustDesk podem ser publicadas no IP do Tailscale
+      - "80:80"
+      - "443:443"
+      - "21115:21115"
+      - "21116:21116"
+      - "21116:21116/udp"
+      - "21117:21117"
+    environment:
+      - DOMAIN=${DOMAIN:-bipdesk-server}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - bipdesk-caddy-data:/data
+      - bipdesk-caddy-config:/config
+      - ./downloads:/var/www/downloads:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      tailscale:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+networks:
+  bipdesk-net:
+    name: bipdesk-net
+    driver: bridge
+
+volumes:
+  bipdesk-tailscale-data:
+  bipdesk-server-data:
+  bipdesk-api-data:
+  bipdesk-secrets-data:
+  bipdesk-caddy-data:
+  bipdesk-caddy-config:

@@ -1,33 +1,47 @@
 services:
-  # Servidor de Sinalização e Registro de IDs (BipDesk Cloud)
+  # Servidor de Sinalização e Registro de IDs (BipDesk HBBS)
   hbbs:
     image: rustdesk/rustdesk-server:1.1.16
     container_name: bipdesk-hbbs
     restart: unless-stopped
-    network_mode: host
-    command: hbbs -k _
+    networks:
+      - bipdesk-net
+    ports:
+      - "21115:21115"
+      - "21116:21116"
+      - "21116:21116/udp"
+    command: hbbs -r ${DOMAIN:-localhost}:21117 -k _
     volumes:
-      - /var/lib/bipdesk-server:/root
+      - bipdesk-server-data:/root
     environment:
       - ALWAYS_USE_RELAY=N
     deploy:
       resources:
         limits:
-          memory: 80M
+          memory: 120M
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 21116 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
-  # Servidor de Relay para tráfego criptografado
+  # Servidor de Relay para tráfego criptografado (BipDesk HBBR)
   hbbr:
     image: rustdesk/rustdesk-server:1.1.16
     container_name: bipdesk-hbbr
     restart: unless-stopped
-    network_mode: host
+    networks:
+      - bipdesk-net
+    ports:
+      - "21117:21117"
     command: hbbr -k _
     volumes:
-      - /var/lib/bipdesk-server:/root
+      - bipdesk-server-data:/root
     deploy:
       resources:
         limits:
-          memory: 80M
+          memory: 120M
 
   # API de Gerenciamento, Inventário e Heartbeat (FastAPI + SQLite WAL)
   api:
@@ -37,36 +51,71 @@ services:
     image: bipdesk-api:1.0.0
     container_name: bipdesk-api
     restart: unless-stopped
-    network_mode: host
+    networks:
+      - bipdesk-net
+    expose:
+      - "8080"
     env_file:
       - .env
     volumes:
-      - /var/lib/bipdesk-api/data:/data
-      - /data/secrets:/data/secrets
-      - /var/lib/bipdesk-server:/server-keys:ro
-      - /var/www/bipdesk-downloads:/downloads:ro
+      - bipdesk-api-data:/data
+      - bipdesk-secrets-data:/data/secrets
+      - bipdesk-server-data:/server-keys:ro
+      - ./downloads:/downloads:ro
     environment:
       - DATABASE_URL=sqlite:////data/bipdesk.db
       - SERVER_PUBKEY_PATH=/server-keys/id_ed25519.pub
       - PORT=8080
-      - HOST=127.0.0.1
+      - HOST=0.0.0.0
     deploy:
       resources:
         limits:
-          memory: 128M
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz').read()\" || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
-  # Proxy Reverso Caddy com HTTPS Let's Encrypt automático
+  # Proxy Reverso Caddy com HTTPS e Rate Limiting de Borda
   caddy:
     image: caddy:2.10.2
     container_name: bipdesk-caddy
     restart: unless-stopped
-    network_mode: host
+    networks:
+      - bipdesk-net
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - /var/lib/caddy/data:/data
-      - /var/lib/caddy/config:/config
-      - /var/www/bipdesk-downloads:/var/www/downloads:ro
+      - bipdesk-caddy-data:/data
+      - bipdesk-caddy-config:/config
+      - ./downloads:/var/www/downloads:ro
+    depends_on:
+      api:
+        condition: service_healthy
     deploy:
       resources:
         limits:
-          memory: 64M
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  bipdesk-net:
+    name: bipdesk-net
+    driver: bridge
+
+volumes:
+  bipdesk-server-data:
+  bipdesk-api-data:
+  bipdesk-secrets-data:
+  bipdesk-caddy-data:
+  bipdesk-caddy-config:

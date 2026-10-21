@@ -53,10 +53,26 @@ $Password = [System.Web.Security.Membership]::GeneratePassword(24, 6)
 # 4. Instalar e Configurar o Serviço do Windows
 Write-Host "[3/5] Registrando serviço de sistema BipDesk..." -ForegroundColor Green
 
-$ServerHost = "bipdesk.duckdns.org"
+# Extrai o host a partir da URL do servidor configurada
+try {
+    $Uri = [System.Uri]$ServerUrl
+    $ServerHost = $Uri.Host
+} catch {
+    $ServerHost = $ServerUrl.Replace("https://", "").Replace("http://", "").Split("/")[0].Split(":")[0]
+}
+
 $ServerKey = $env:BIPDESK_SERVER_KEY
 if (-not $ServerKey) {
-    $ServerKey = "gsTzsIewn3wB9umlEvZgT+Z9ZUKNxcAwbhl+bz2pJFw="
+    try {
+        $keyRes = Invoke-RestMethod -Uri "$ServerUrl/api/server-key" -TimeoutSec 10 -ErrorAction SilentlyContinue
+        if ($keyRes.pubkey) {
+            $ServerKey = $keyRes.pubkey.Trim()
+        }
+    } catch { }
+}
+if (-not $ServerKey) {
+    Write-Error "CRÍTICO: Chave pública do servidor não localizada. Defina a variável BIPDESK_SERVER_KEY."
+    Exit 1
 }
 
 $tomlContent = @"

@@ -2,10 +2,10 @@
 set -euo pipefail
 
 echo "=========================================================="
-echo "    BipDesk Cloud - VM Bootstrap (Oracle Cloud Free Tier)  "
+echo "    BipDesk Server - Linux Host Bootstrap (ADR-003)       "
 echo "=========================================================="
 
-# 1. Configuração de Swap de 2GB (Vital para VM de 1GB RAM)
+# 1. Configuração de Swap de 2GB (Vital para instâncias com 1GB a 2GB RAM)
 if ! grep -q '/swapfile' /etc/fstab; then
     echo ">> Configurando Swap de 2GB..."
     fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
@@ -30,11 +30,10 @@ net.core.somaxconn = 4096
 EOF
 sysctl -p /etc/sysctl.d/99-bipdesk-net.conf || true
 
-# 3. Correção do Firewall do Oracle Linux / Ubuntu
-# ATENÇÃO: As instâncias da Oracle vêm com regras rígidas de REJECT no iptables nativo
-echo ">> Ajustando regras de firewall no iptables..."
+# 3. Configuração de Regras de Firewall (iptables / ufw)
+echo ">> Ajustando regras de firewall para serviços BipDesk..."
 if command -v iptables &> /dev/null; then
-    # Permite tráfego BipDesk antes da regra de REJECT padrão da Oracle
+    # Permite portas de sinalização, relay e Caddy HTTPS
     iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT || true
     iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT || true
     iptables -I INPUT 1 -p tcp --dport 21115 -j ACCEPT || true
