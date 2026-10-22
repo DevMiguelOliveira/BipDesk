@@ -5,7 +5,7 @@ services:
   # Zero portas abertas para a internet pública.
   # -------------------------------------------------------------
   tailscale:
-    image: tailscale/tailscale:v1.78.2
+    image: tailscale/tailscale:stable
     container_name: bipdesk-tailscale
     hostname: ${TS_HOSTNAME:-bipdesk-server}
     restart: unless-stopped
@@ -25,7 +25,7 @@ services:
 
   # Servidor de Sinalização e Registro de IDs (BipDesk HBBS)
   hbbs:
-    image: rustdesk/rustdesk-server:1.1.16
+    image: rustdesk/rustdesk-server:latest
     container_name: bipdesk-hbbs
     restart: unless-stopped
     networks:
@@ -50,7 +50,7 @@ services:
 
   # Servidor de Relay para tráfego criptografado (BipDesk HBBR)
   hbbr:
-    image: rustdesk/rustdesk-server:1.1.16
+    image: rustdesk/rustdesk-server:latest
     container_name: bipdesk-hbbr
     restart: unless-stopped
     networks:
@@ -104,7 +104,7 @@ services:
 
   # Proxy Reverso Caddy com HTTPS e Rate Limiting
   caddy:
-    image: caddy:2.10.2
+    image: caddy:2-alpine
     container_name: bipdesk-caddy
     restart: unless-stopped
     networks:

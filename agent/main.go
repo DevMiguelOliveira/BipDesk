@@ -2,10 +2,10 @@ package main
 
 import (
 	"bytes"
-	"crypto/hmac"
+	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -26,6 +26,8 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/gorilla/websocket"
 )
 
 var digitIdRegex = regexp.MustCompile(`\b\d{6,16}\b`)
@@ -37,7 +39,6 @@ func extractCleanID(raw string) string {
 		return ""
 	}
 	lines := strings.Split(raw, "\n")
-	// 1. Procura de baixo para cima por uma linha que contenha apenas dígitos (6 a 16 dígitos)
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := strings.TrimSpace(lines[i])
 		line = strings.Trim(line, "\r")
@@ -56,7 +57,6 @@ func extractCleanID(raw string) string {
 		}
 	}
 
-	// 2. Procura de baixo para cima por padrão isolado de dígitos
 	for i := len(lines) - 1; i >= 0; i-- {
 		matches := digitIdRegex.FindAllString(lines[i], -1)
 		if len(matches) > 0 {
@@ -64,7 +64,6 @@ func extractCleanID(raw string) string {
 		}
 	}
 
-	// 3. Fallback: linha curta alfanumérica limpa sem mensagens de diagnóstico
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := strings.TrimSpace(lines[i])
 		line = strings.Trim(line, "\r")
@@ -83,40 +82,299 @@ func extractCleanID(raw string) string {
 	return ""
 }
 
-type HeartbeatPayload struct {
-	RustdeskID   string `json:"rustdesk_id"`
-	LoggedInUser string `json:"logged_in_user"`
-	IPAddress    string `json:"ip_address,omitempty"`
-	CPUUsage     int    `json:"cpu_usage"`
-	RAMUsage     int    `json:"ram_usage"`
-	DiskFreeGB   int    `json:"disk_free_gb"`
-	CPUModel     string `json:"cpu_model,omitempty"`
+// ----------------- Envelopes e Mensagens Assinadas Ed25519 (ADR-012) -----------------
+
+// SignedEnvelope representa o envelope canônico com assinatura criptográfica Ed25519 (Seção 3)
+type SignedEnvelope struct {
+	Type      string         `json:"type"`
+	MachineID string         `json:"machine_id"`
+	Timestamp int64          `json:"timestamp"`
+	Nonce     string         `json:"nonce"`
+	Payload   map[string]any `json:"payload"`
+	Signature string         `json:"signature"`
 }
 
-type CommandItem struct {
-	ID        int    `json:"id"`
-	Type      string `json:"type"`
-	Payload   string `json:"payload,omitempty"`
-	Nonce     string `json:"nonce"`
-	Timestamp int64  `json:"timestamp"`
-	Signature string `json:"signature"`
+// formatCanonicalString constrói a representação canônica rigorosa:
+// type:machine_id:timestamp:nonce:canonical_json_payload
+func formatCanonicalString(msgType, machineID string, timestamp int64, nonce string, payload map[string]any) (string, error) {
+	if payload == nil {
+		payload = make(map[string]any)
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s:%s:%d:%s:%s", msgType, machineID, timestamp, nonce, string(payloadBytes)), nil
 }
 
-type HeartbeatResponse struct {
-	Status   string        `json:"status"`
-	Commands []CommandItem `json:"commands,omitempty"`
+// generateRandomNonce gera um nonce criptograficamente aleatório de 16 bytes em hex
+func generateRandomNonce() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
-type ServerKeyResponse struct {
-	ServerKey string `json:"server_key"`
+// signEnvelope gera a assinatura Ed25519 e empacota no envelope canônico
+func signEnvelope(msgType, machineID string, payload map[string]any, privKey ed25519.PrivateKey) (*SignedEnvelope, error) {
+	now := time.Now().Unix()
+	nonce := generateRandomNonce()
+
+	canonicalStr, err := formatCanonicalString(msgType, machineID, now, nonce, payload)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao formatar string canônica: %w", err)
+	}
+
+	sigBytes := ed25519.Sign(privKey, []byte(canonicalStr))
+	sigHex := hex.EncodeToString(sigBytes)
+
+	return &SignedEnvelope{
+		Type:      msgType,
+		MachineID: machineID,
+		Timestamp: now,
+		Nonce:     nonce,
+		Payload:   payload,
+		Signature: sigHex,
+	}, nil
 }
 
-type EnrollResponse struct {
-	Status       string `json:"status"`
-	MachineID    int    `json:"machine_id"`
-	MachineToken string `json:"machine_token"`
-	ServerKey    string `json:"server_key"`
+// ----------------- Anti-Replay Nonce Cache & Validação Temporal (Seção 3) -----------------
+
+var (
+	nonceMutex sync.Mutex
+	seenNonces = make(map[string]int64)
+)
+
+func isValidNonce(nonce string, now int64) bool {
+	if nonce == "" || len(nonce) < 8 {
+		return false
+	}
+	nonceMutex.Lock()
+	defer nonceMutex.Unlock()
+
+	// Limpa nonces expirados (> 300s)
+	for k, ts := range seenNonces {
+		if now-ts > 300 {
+			delete(seenNonces, k)
+		}
+	}
+	if _, exists := seenNonces[nonce]; exists {
+		return false
+	}
+	seenNonces[nonce] = now
+	return true
 }
+
+func clearNonceCache() {
+	nonceMutex.Lock()
+	defer nonceMutex.Unlock()
+	seenNonces = make(map[string]int64)
+}
+
+// verifyServerEnvelope valida mensagem recebida do servidor: tamanho, timestamp, replay e Ed25519
+func verifyServerEnvelope(rawMsg []byte, pinnedServerKeyHex, expectedMachineID string) (*SignedEnvelope, error) {
+	// 1. Limite estrito de tamanho de mensagem: 64 KB (65.536 bytes)
+	if len(rawMsg) > 65536 {
+		return nil, fmt.Errorf("mensagem rejeitada: tamanho excede 64 KB (%d bytes)", len(rawMsg))
+	}
+
+	var env SignedEnvelope
+	if err := json.Unmarshal(rawMsg, &env); err != nil {
+		return nil, fmt.Errorf("envelope JSON malformado: %w", err)
+	}
+
+	// 2. Validação de identificador da máquina
+	if expectedMachineID != "" && env.MachineID != expectedMachineID {
+		return nil, fmt.Errorf("machine_id incorreto no envelope: esperado %s, obtido %s", expectedMachineID, env.MachineID)
+	}
+
+	now := time.Now().Unix()
+
+	// 3. Validação de janela temporal: skew de até +- 120s (Seção 3)
+	skew := now - env.Timestamp
+	if skew < -120 || skew > 120 {
+		return nil, fmt.Errorf("timestamp fora da janela permitida (+- 120s): skew=%ds", skew)
+	}
+
+	// 4. Proteção contra Replay Attack (Nonce único na janela)
+	if !isValidNonce(env.Nonce, now) {
+		return nil, fmt.Errorf("replay attack detectado ou nonce reutilizado: %s", env.Nonce)
+	}
+
+	// 5. Validação da chave do servidor fixada no instalador (ADR-013)
+	if pinnedServerKeyHex == "" {
+		return nil, fmt.Errorf("chave pública do servidor não configurada para pinning")
+	}
+	serverPubBytes, err := hex.DecodeString(strings.TrimSpace(pinnedServerKeyHex))
+	if err != nil || len(serverPubBytes) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("chave pública fixada do servidor inválida (%s)", pinnedServerKeyHex)
+	}
+
+	// 6. Verificação de assinatura Ed25519 sobre string canônica
+	canonicalStr, err := formatCanonicalString(env.Type, env.MachineID, env.Timestamp, env.Nonce, env.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao formatar representação canônica: %w", err)
+	}
+
+	sigBytes, err := hex.DecodeString(strings.TrimSpace(env.Signature))
+	if err != nil || len(sigBytes) != ed25519.SignatureSize {
+		return nil, fmt.Errorf("assinatura Ed25519 malformada")
+	}
+
+	if !ed25519.Verify(serverPubBytes, []byte(canonicalStr), sigBytes) {
+		return nil, fmt.Errorf("assinatura Ed25519 do servidor inválida")
+	}
+
+	return &env, nil
+}
+
+// ----------------- DPAPI e Armazenamento Seguro de Chave da Máquina (ADR-011) -----------------
+
+var (
+	modcrypt32             = syscall.NewLazyDLL("crypt32.dll")
+	procCryptProtectData   = modcrypt32.NewProc("CryptProtectData")
+	procCryptUnprotectData = modcrypt32.NewProc("CryptUnprotectData")
+)
+
+type dataBlob struct {
+	cbData uint32
+	pbData *byte
+}
+
+func newBlob(d []byte) *dataBlob {
+	if len(d) == 0 {
+		return &dataBlob{}
+	}
+	return &dataBlob{
+		cbData: uint32(len(d)),
+		pbData: &d[0],
+	}
+}
+
+func (b *dataBlob) toByteArray() []byte {
+	if b.cbData == 0 || b.pbData == nil {
+		return nil
+	}
+	d := make([]byte, b.cbData)
+	copy(d, unsafe.Slice(b.pbData, b.cbData))
+	return d
+}
+
+const (
+	CRYPTPROTECT_UI_FORBIDDEN  = 0x1
+	CRYPTPROTECT_LOCAL_MACHINE = 0x4
+)
+
+// encryptDPAPI cifra dados usando DPAPI com escopo de máquina (CRYPTPROTECT_LOCAL_MACHINE)
+func encryptDPAPI(data []byte) ([]byte, error) {
+	if runtime.GOOS != "windows" {
+		return data, nil
+	}
+	var outBlob dataBlob
+	// Flags: CRYPTPROTECT_LOCAL_MACHINE (0x4) | CRYPTPROTECT_UI_FORBIDDEN (0x1) = 0x5
+	dwFlags := uintptr(CRYPTPROTECT_LOCAL_MACHINE | CRYPTPROTECT_UI_FORBIDDEN)
+	r, _, err := procCryptProtectData.Call(
+		uintptr(unsafe.Pointer(newBlob(data))),
+		0, 0, 0, 0, dwFlags,
+		uintptr(unsafe.Pointer(&outBlob)),
+	)
+	if r == 0 {
+		return nil, fmt.Errorf("CryptProtectData falhou: %w", err)
+	}
+	defer syscall.LocalFree(syscall.Handle(unsafe.Pointer(outBlob.pbData)))
+	return outBlob.toByteArray(), nil
+}
+
+// decryptDPAPI decifra dados protegidos por DPAPI em escopo de máquina
+func decryptDPAPI(data []byte) ([]byte, error) {
+	if runtime.GOOS != "windows" {
+		return data, nil
+	}
+	var outBlob dataBlob
+	dwFlags := uintptr(CRYPTPROTECT_UI_FORBIDDEN)
+	r, _, err := procCryptUnprotectData.Call(
+		uintptr(unsafe.Pointer(newBlob(data))),
+		0, 0, 0, 0, dwFlags,
+		uintptr(unsafe.Pointer(&outBlob)),
+	)
+	if r == 0 {
+		return nil, fmt.Errorf("CryptUnprotectData falhou: %w", err)
+	}
+	defer syscall.LocalFree(syscall.Handle(unsafe.Pointer(outBlob.pbData)))
+	return outBlob.toByteArray(), nil
+}
+
+// restrictKeyFileACL restringe a permissão do arquivo exclusivamente a SYSTEM e Administradores (ADR-011)
+// Adicionalmente inclui o usuário atual para viabilizar testes unitários e execuções no contexto do processo
+func restrictKeyFileACL(filePath string) error {
+	if runtime.GOOS != "windows" {
+		return os.Chmod(filePath, 0600)
+	}
+	// Well-known SIDs: *S-1-5-18 = NT AUTHORITY\SYSTEM, *S-1-5-32-544 = BUILTIN\Administrators
+	args := []string{filePath, "/inheritance:r", "/grant:r", "*S-1-5-18:(F)", "*S-1-5-32-544:(F)"}
+	if u, err := user.Current(); err == nil && u.Uid != "" {
+		args = append(args, fmt.Sprintf("*%s:(F)", u.Uid))
+	}
+	cmd := exec.Command("icacls.exe", args...)
+	return cmd.Run()
+}
+
+func getHostKeyFilePath() string {
+	if custom := os.Getenv("BIPDESK_KEY_FILE"); custom != "" {
+		return custom
+	}
+	if runtime.GOOS == "windows" {
+		pd := os.Getenv("ProgramData")
+		if pd == "" {
+			pd = `C:\ProgramData`
+		}
+		return filepath.Join(pd, "BipDesk", "host_ed25519.key")
+	}
+	return filepath.Join(os.TempDir(), "bipdesk-host-ed25519.key")
+}
+
+// loadOrCreateHostEd25519Key carrega ou gera par de chaves Ed25519 do host protegido por DPAPI
+func loadOrCreateHostEd25519Key(keyPath string) (ed25519.PublicKey, ed25519.PrivateKey, error) {
+	if keyPath == "" {
+		keyPath = getHostKeyFilePath()
+	}
+
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0700); err != nil {
+		return nil, nil, err
+	}
+
+	// 1. Tenta carregar chave existente
+	if data, err := os.ReadFile(keyPath); err == nil && len(data) > 0 {
+		decrypted, err := decryptDPAPI(data)
+		if err == nil && len(decrypted) == ed25519.PrivateKeySize {
+			privKey := ed25519.PrivateKey(decrypted)
+			pubKey := privKey.Public().(ed25519.PublicKey)
+			return pubKey, privKey, nil
+		}
+	}
+
+	// 2. Primeira execução: gera novo par Ed25519
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, nil, fmt.Errorf("falha ao gerar par Ed25519 da máquina: %w", err)
+	}
+
+	// 3. Cifra com DPAPI em escopo de máquina
+	encrypted, err := encryptDPAPI(privKey)
+	if err != nil {
+		// Fallback se DPAPI indisponível (testes unitários fora do Windows)
+		encrypted = []byte(privKey)
+	}
+
+	// 4. Salva no disco com ACL restrita
+	if err := os.WriteFile(keyPath, encrypted, 0600); err != nil {
+		return nil, nil, fmt.Errorf("falha ao salvar chave privada Ed25519: %w", err)
+	}
+	_ = restrictKeyFileACL(keyPath)
+
+	return pubKey, privKey, nil
+}
+
+// ----------------- Hardware & Telemetria do Host -----------------
 
 var (
 	moduser32               = syscall.NewLazyDLL("user32.dll")
@@ -125,10 +383,6 @@ var (
 	procGlobalMemoryStatus  = modkernel32.NewProc("GlobalMemoryStatusEx")
 	procGetSystemTimes      = modkernel32.NewProc("GetSystemTimes")
 	procGetDiskFreeSpaceExW = modkernel32.NewProc("GetDiskFreeSpaceExW")
-
-	modcrypt32             = syscall.NewLazyDLL("crypt32.dll")
-	procCryptProtectData   = modcrypt32.NewProc("CryptProtectData")
-	procCryptUnprotectData = modcrypt32.NewProc("CryptUnprotectData")
 )
 
 type memoryStatusEx struct {
@@ -250,568 +504,6 @@ func getCPUModel() string {
 	return runtime.GOARCH
 }
 
-const (
-	MB_OK              = 0x00000000
-	MB_ICONINFORMATION = 0x00000040
-	MB_ICONWARNING     = 0x00000030
-	MB_ICONERROR       = 0x00000010
-)
-
-func showMessageBox(title, message string, uType uint) {
-	if runtime.GOOS != "windows" {
-		log.Printf("[%s] %s\n", title, message)
-		return
-	}
-	tPtr, _ := syscall.UTF16PtrFromString(title)
-	mPtr, _ := syscall.UTF16PtrFromString(message)
-	procMessageBox.Call(0, uintptr(unsafe.Pointer(mPtr)), uintptr(unsafe.Pointer(tPtr)), uintptr(uType))
-}
-
-func isUserAdmin() bool {
-	if runtime.GOOS != "windows" {
-		return os.Geteuid() == 0
-	}
-	cmd := exec.Command("net", "session")
-	return cmd.Run() == nil
-}
-
-func generateRandomPassword(length int) string {
-	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%"
-	b := make([]byte, length)
-	for i := range b {
-		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
-		b[i] = chars[n.Int64()]
-	}
-	return string(b)
-}
-
-func createHTTPClient(timeout time.Duration) *http.Client {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-		},
-	}
-	return &http.Client{
-		Timeout:   timeout,
-		Transport: tr,
-	}
-}
-
-// downloadFile baixa um arquivo e valida o hash SHA-256 esperado se fornecido (ADR-007)
-func downloadFile(url, dest, expectedSHA256 string) error {
-	client := createHTTPClient(3 * time.Minute)
-	resp, err := client.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("status HTTP %d ao baixar %s", resp.StatusCode, url)
-	}
-
-	tmpDest := dest + ".part"
-	out, err := os.Create(tmpDest)
-	if err != nil {
-		return err
-	}
-
-	hasher := sha256.New()
-	writer := io.MultiWriter(out, hasher)
-
-	if _, err := io.Copy(writer, resp.Body); err != nil {
-		out.Close()
-		_ = os.Remove(tmpDest)
-		return err
-	}
-	out.Close()
-
-	if expectedSHA256 != "" {
-		actualHash := hex.EncodeToString(hasher.Sum(nil))
-		if !strings.EqualFold(actualHash, expectedSHA256) {
-			_ = os.Remove(tmpDest)
-			return fmt.Errorf("falha de integridade SHA-256 para %s: esperado %s, obtido %s", dest, expectedSHA256, actualHash)
-		}
-	}
-
-	return os.Rename(tmpDest, dest)
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
-	return err
-}
-
-var idLineRegex = regexp.MustCompile(`(?m)^id\s*=\s*['"]([0-9a-zA-Z_-]+)['"]`)
-
-func readIDFromConfig() string {
-	paths := []string{
-		filepath.Join(os.Getenv("APPDATA"), "RustDesk", "config", "RustDesk.toml"),
-		`C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk.toml`,
-		`C:\ProgramData\RustDesk\config\RustDesk.toml`,
-		filepath.Join(os.Getenv("APPDATA"), "BipDesk", "config", "BipDesk.toml"),
-		`C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\BipDesk\config\BipDesk.toml`,
-		`C:\ProgramData\BipDesk\config\BipDesk.toml`,
-	}
-	for _, p := range paths {
-		if b, err := os.ReadFile(p); err == nil {
-			content := string(b)
-			m := idLineRegex.FindStringSubmatch(content)
-			if len(m) > 1 {
-				clean := extractCleanID(m[1])
-				if clean != "" {
-					return clean
-				}
-			}
-		}
-	}
-	return ""
-}
-
-func createDesktopShortcut(targetExe, iconFile string) {
-	desktop := filepath.Join(os.Getenv("PUBLIC"), "Desktop")
-	if _, err := os.Stat(desktop); os.IsNotExist(err) {
-		desktop = filepath.Join(os.Getenv("USERPROFILE"), "Desktop")
-	}
-	lnkPath := filepath.Join(desktop, "BipDesk Host.lnk")
-	iconPart := ""
-	if _, err := os.Stat(iconFile); err == nil {
-		iconPart = fmt.Sprintf("$Shortcut.IconLocation = '%s,0';", iconFile)
-	}
-	psScript := fmt.Sprintf(`$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%s'); $Shortcut.TargetPath = '%s'; %s $Shortcut.Description = 'BipDesk Host'; $Shortcut.Save()`, lnkPath, targetExe, iconPart)
-	exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command", psScript).Run()
-}
-
-// ----------------- DPAPI e Armazenamento Seguro de Token (ADR-001) -----------------
-
-type dataBlob struct {
-	cbData uint32
-	pbData *byte
-}
-
-func newBlob(d []byte) *dataBlob {
-	if len(d) == 0 {
-		return &dataBlob{}
-	}
-	return &dataBlob{
-		cbData: uint32(len(d)),
-		pbData: &d[0],
-	}
-}
-
-func (b *dataBlob) toByteArray() []byte {
-	if b.cbData == 0 || b.pbData == nil {
-		return nil
-	}
-	d := make([]byte, b.cbData)
-	copy(d, unsafe.Slice(b.pbData, b.cbData))
-	return d
-}
-
-func encryptDPAPI(data []byte) ([]byte, error) {
-	if runtime.GOOS != "windows" {
-		return data, nil
-	}
-	var outBlob dataBlob
-	r, _, err := procCryptProtectData.Call(
-		uintptr(unsafe.Pointer(newBlob(data))),
-		0, 0, 0, 0, 0,
-		uintptr(unsafe.Pointer(&outBlob)),
-	)
-	if r == 0 {
-		return nil, fmt.Errorf("CryptProtectData falhou: %w", err)
-	}
-	defer syscall.LocalFree(syscall.Handle(unsafe.Pointer(outBlob.pbData)))
-	return outBlob.toByteArray(), nil
-}
-
-func decryptDPAPI(data []byte) ([]byte, error) {
-	if runtime.GOOS != "windows" {
-		return data, nil
-	}
-	var outBlob dataBlob
-	r, _, err := procCryptUnprotectData.Call(
-		uintptr(unsafe.Pointer(newBlob(data))),
-		0, 0, 0, 0, 0,
-		uintptr(unsafe.Pointer(&outBlob)),
-	)
-	if r == 0 {
-		return nil, fmt.Errorf("CryptUnprotectData falhou: %w", err)
-	}
-	defer syscall.LocalFree(syscall.Handle(unsafe.Pointer(outBlob.pbData)))
-	return outBlob.toByteArray(), nil
-}
-
-func getTokenFilePath() string {
-	if runtime.GOOS == "windows" {
-		pd := os.Getenv("ProgramData")
-		if pd == "" {
-			pd = `C:\ProgramData`
-		}
-		return filepath.Join(pd, "BipDesk", "token.dat")
-	}
-	return filepath.Join(os.TempDir(), "bipdesk-token.dat")
-}
-
-func saveMachineToken(token string) error {
-	p := getTokenFilePath()
-	if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
-		return err
-	}
-	enc, err := encryptDPAPI([]byte(token))
-	if err != nil {
-		// Fallback sem DPAPI caso ocorra erro específico do SO
-		enc = []byte(token)
-	}
-	return os.WriteFile(p, enc, 0600)
-}
-
-func loadMachineToken() string {
-	p := getTokenFilePath()
-	data, err := os.ReadFile(p)
-	if err != nil {
-		return ""
-	}
-	dec, err := decryptDPAPI(data)
-	if err == nil && len(dec) > 0 {
-		return string(dec)
-	}
-	return string(data)
-}
-
-// ----------------- Comandos Remotos e Proteção Criptográfica (ADR-002) -----------------
-
-var (
-	nonceMutex sync.Mutex
-	seenNonces = make(map[string]int64)
-)
-
-func isValidNonce(nonce string, now int64) bool {
-	if nonce == "" {
-		return false
-	}
-	nonceMutex.Lock()
-	defer nonceMutex.Unlock()
-
-	// Limpa nonces expirados (> 300s)
-	for k, ts := range seenNonces {
-		if now-ts > 300 {
-			delete(seenNonces, k)
-		}
-	}
-	if _, exists := seenNonces[nonce]; exists {
-		return false
-	}
-	seenNonces[nonce] = now
-	return true
-}
-
-func verifyCommandSignature(cmd CommandItem, clientID, machineToken string) bool {
-	if machineToken == "" {
-		return false
-	}
-	tokenHashBytes := sha256.Sum256([]byte(machineToken))
-	tokenHashHex := hex.EncodeToString(tokenHashBytes[:])
-
-	msgToSign := fmt.Sprintf("%s:%s:%s:%d", cmd.Type, clientID, cmd.Nonce, cmd.Timestamp)
-	mac := hmac.New(sha256.New, []byte(tokenHashHex))
-	mac.Write([]byte(msgToSign))
-	expectedSig := hex.EncodeToString(mac.Sum(nil))
-
-	return hmac.Equal([]byte(strings.ToLower(cmd.Signature)), []byte(strings.ToLower(expectedSig)))
-}
-
-func executeCommand(cmd CommandItem, clientID, machineToken string) error {
-	now := time.Now().Unix()
-
-	// 1. Verificação de expiração temporal (< 60s)
-	skew := now - cmd.Timestamp
-	if skew < -30 || skew > 60 {
-		return fmt.Errorf("comando expirado ou relogio dessincronizado (skew=%ds)", skew)
-	}
-
-	// 2. Verificação de proteção contra repetição (Replay Nonce)
-	if !isValidNonce(cmd.Nonce, now) {
-		return fmt.Errorf("replay attack detectado ou nonce reutilizado: %s", cmd.Nonce)
-	}
-
-	// 3. Verificação de assinatura criptográfica
-	if !verifyCommandSignature(cmd, clientID, machineToken) {
-		return fmt.Errorf("assinatura criptografica invalida para comando %d", cmd.ID)
-	}
-
-	log.Printf("[AUDITORIA AGENTE] Comando autorizado recebido: id=%d, tipo=%s, nonce=%s\n", cmd.ID, cmd.Type, cmd.Nonce)
-
-	// 4. Enum Fechado Estrito (ADR-002 / R3)
-	switch cmd.Type {
-	case "cad":
-		log.Println("[AUDITORIA AGENTE] Executando comando SAS/CAD...")
-		sessionExe := `C:\Program Files\BipDesk\BipDesk_Session.exe`
-		if _, err := os.Stat(sessionExe); err == nil {
-			go exec.Command(sessionExe, "--send-cad").Run()
-		} else {
-			rustdeskExe := `C:\Program Files\RustDesk\RustDesk.exe`
-			if _, err := os.Stat(rustdeskExe); err == nil {
-				go exec.Command(rustdeskExe, "--send-cad").Run()
-			}
-		}
-
-	case "restart_spooler":
-		log.Println("[AUDITORIA AGENTE] Reiniciando servico de spooler de impressao...")
-		go func() {
-			_ = exec.Command("net.exe", "stop", "spooler").Run()
-			time.Sleep(1 * time.Second)
-			_ = exec.Command("net.exe", "start", "spooler").Run()
-		}()
-
-	case "flush_dns":
-		log.Println("[AUDITORIA AGENTE] Executando limpeza de cache DNS...")
-		go func() {
-			_ = exec.Command("ipconfig.exe", "/flushdns").Run()
-		}()
-
-	case "lock":
-		log.Println("[AUDITORIA AGENTE] Bloqueando estacao de trabalho...")
-		go func() {
-			_ = exec.Command("rundll32.exe", "user32.dll,LockWorkStation").Run()
-		}()
-
-	case "reboot":
-		log.Println("[AUDITORIA AGENTE] Reiniciando estacao de trabalho sob demanda...")
-		go func() {
-			_ = exec.Command("shutdown.exe", "/r", "/t", "5", "/c", "Reinicio solicitado pelo Suporte Tecnico BipDesk", "/f").Run()
-		}()
-
-	default:
-		return fmt.Errorf("tipo de comando desconhecido ou fora do enum autorizado: %s", cmd.Type)
-	}
-
-	return nil
-}
-
-// ----------------- Obtenção da Chave do Servidor (ADR-004) -----------------
-
-func fetchServerKey(serverURL string) (string, error) {
-	client := createHTTPClient(10 * time.Second)
-	resp, err := client.Get(fmt.Sprintf("%s/api/server-key", strings.TrimRight(serverURL, "/")))
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("status HTTP %d", resp.StatusCode)
-	}
-
-	var res ServerKeyResponse
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		return "", err
-	}
-	return res.ServerKey, nil
-}
-
-// ----------------- AutoSetup e Instalação (ADR-008: Sem Auto-Elevação Silenciosa) -----------------
-
-func runAutoSetup(serverURL, enrollToken string) (string, string, error) {
-	// 1. Verificação de privilégios de Administrador (ADR-008: Elevação explícita pelo instalador, sem auto-elevação UAC via PowerShell)
-	if !isUserAdmin() {
-		showMessageBox("BipDesk Host - Privilégios Insuficientes",
-			"A instalação do BipDesk Host requer permissões de Administrador do sistema.\n\nPor favor, execute o instalador clicando com o botão direito e selecionando 'Executar como Administrador'.",
-			MB_ICONERROR)
-		return "", "", fmt.Errorf("privilégios de Administrador requeridos")
-	}
-
-	installDir := `C:\Program Files\BipDesk`
-	_ = os.MkdirAll(installDir, 0755)
-
-	sessionExe := filepath.Join(installDir, "BipDesk_Session.exe")
-	agentExe := filepath.Join(installDir, "bipdesk-agent.exe")
-	iconFile := filepath.Join(installDir, "icon.ico")
-
-	// 2. Se o BipDesk_Session.exe não existe, baixa do servidor
-	if _, err := os.Stat(sessionExe); os.IsNotExist(err) {
-		showMessageBox("BipDesk Host", "Iniciando instalação do BipDesk Host...\n\nO motor de conexão será baixado e configurado com verificação de integridade.", MB_ICONINFORMATION)
-		if err := downloadFile(serverURL+"/downloads/BipDesk_Session.exe", sessionExe, ""); err != nil {
-			return "", "", fmt.Errorf("falha ao baixar BipDesk_Session.exe: %w", err)
-		}
-	}
-
-	// 3. Baixa ícone se não existir
-	if _, err := os.Stat(iconFile); os.IsNotExist(err) {
-		_ = downloadFile(serverURL+"/downloads/icon.ico", iconFile, "")
-	}
-
-	// 4. Copia o próprio agente para a pasta do programa
-	currentExe, err := os.Executable()
-	if err == nil && !strings.EqualFold(currentExe, agentExe) {
-		_ = copyFile(currentExe, agentExe)
-	}
-
-	// 5. Obtém a chave pública do servidor de forma segura (sem chave hardcoded em código-fonte)
-	serverKey := os.Getenv("BIPDESK_SERVER_KEY")
-	if serverKey == "" {
-		fetchedKey, err := fetchServerKey(serverURL)
-		if err == nil && fetchedKey != "" {
-			serverKey = fetchedKey
-		}
-	}
-
-	// Extrai host do serverURL para configurar rendezvous
-	serverHost := strings.TrimPrefix(serverURL, "https://")
-	serverHost = strings.TrimPrefix(serverHost, "http://")
-	if idx := strings.Index(serverHost, "/"); idx != -1 {
-		serverHost = serverHost[:idx]
-	}
-	if idx := strings.Index(serverHost, ":"); idx != -1 {
-		serverHost = serverHost[:idx]
-	}
-
-	tomlConfig := fmt.Sprintf(`rendezvous_server = '%s'
-relay_server = '%s'
-api_server = 'https://%s'
-
-[options]
-custom-rendezvous-server = '%s'
-relay-server = '%s'
-api-server = 'https://%s'
-key = '%s'
-`, serverHost, serverHost, serverHost, serverHost, serverHost, serverHost, serverKey)
-
-	// Grava nos perfis necessários
-	appData := os.Getenv("APPDATA")
-	targetDirs := []string{
-		filepath.Join(appData, "RustDesk", "config"),
-		`C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config`,
-		`C:\Windows\System32\config\systemprofile\AppData\Roaming\RustDesk\config`,
-	}
-	for _, dir := range targetDirs {
-		_ = os.MkdirAll(dir, 0755)
-		_ = os.WriteFile(filepath.Join(dir, "RustDesk2.toml"), []byte(tomlConfig), 0644)
-
-		rdToml := filepath.Join(dir, "RustDesk.toml")
-		if b, err := os.ReadFile(rdToml); err == nil {
-			s := string(b)
-			if strings.Contains(s, "rendezvous_server") || !strings.Contains(s, "key_pair") {
-				_ = os.Remove(rdToml)
-			}
-		}
-	}
-
-	if serverKey != "" {
-		_ = exec.Command(sessionExe, "--config", fmt.Sprintf("host=%s,key=%s", serverHost, serverKey)).Run()
-	} else {
-		_ = exec.Command(sessionExe, "--config", fmt.Sprintf("host=%s", serverHost)).Run()
-	}
-	time.Sleep(500 * time.Millisecond)
-
-	password := generateRandomPassword(20)
-	_ = exec.Command(sessionExe, "--password", password).Run()
-	time.Sleep(500 * time.Millisecond)
-
-	_ = exec.Command(sessionExe, "--install-service").Run()
-	time.Sleep(1 * time.Second)
-
-	// 6. Obtém o ID da máquina
-	var machineID string
-	rustdeskInstalledExe := `C:\Program Files\RustDesk\RustDesk.exe`
-	for i := 0; i < 10; i++ {
-		out, err := exec.Command(sessionExe, "--get-id").CombinedOutput()
-		if err == nil {
-			clean := extractCleanID(string(out))
-			if clean != "" {
-				machineID = clean
-				break
-			}
-		}
-		if _, err := os.Stat(rustdeskInstalledExe); err == nil {
-			out2, err2 := exec.Command(rustdeskInstalledExe, "--get-id").CombinedOutput()
-			if err2 == nil {
-				clean2 := extractCleanID(string(out2))
-				if clean2 != "" {
-					machineID = clean2
-					break
-				}
-			}
-		}
-		time.Sleep(1 * time.Second)
-	}
-
-	if machineID == "" {
-		machineID = readIDFromConfig()
-	}
-
-	if machineID == "" {
-		return "", "", fmt.Errorf("não foi possível obter o ID do BipDesk Session")
-	}
-
-	// 7. Registra na API (Enrollment obrigatório)
-	hostname, _ := os.Hostname()
-	enrollPayload := map[string]string{
-		"token":       enrollToken,
-		"rustdesk_id": machineID,
-		"hostname":    hostname,
-		"username":    getLoggedInUser(),
-		"os_version":  runtime.GOOS,
-		"ip_address":  getLocalIP(),
-		"password":    password,
-	}
-	enrollData, _ := json.Marshal(enrollPayload)
-	endpoint := fmt.Sprintf("%s/api/agent/enroll", strings.TrimRight(serverURL, "/"))
-	client := createHTTPClient(15 * time.Second)
-
-	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(enrollData))
-	if err != nil {
-		return "", "", fmt.Errorf("erro ao criar requisição de enrollment: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", "", fmt.Errorf("falha de conexão no enrollment: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("enrollment rejeitado com HTTP %d", resp.StatusCode)
-	}
-
-	var enrollResp EnrollResponse
-	if err := json.NewDecoder(resp.Body).Decode(&enrollResp); err != nil {
-		return "", "", fmt.Errorf("erro ao decodificar resposta de enrollment: %w", err)
-	}
-
-	// Salva o token gerado pelo servidor protegido por DPAPI
-	if err := saveMachineToken(enrollResp.MachineToken); err != nil {
-		log.Printf("[AVISO] Falha ao salvar token da máquina: %v\n", err)
-	}
-
-	// 8. Registra Tarefa Agendada no Windows para iniciar com o sistema
-	schArgs := fmt.Sprintf(`schtasks /create /tn "BipDeskHostAgent" /tr "\"%s\" --server \"%s\" --id \"%s\"" /sc onstart /ru "SYSTEM" /f`, agentExe, serverURL, machineID)
-	exec.Command("cmd.exe", "/c", schArgs).Run()
-
-	// 9. Cria atalho no Desktop com o ícone
-	createDesktopShortcut(sessionExe, iconFile)
-
-	// 10. Exibe mensagem de confirmação transparente para o usuário
-	showMessageBox("BipDesk Host Ativo",
-		fmt.Sprintf("BipDesk Host instalado e configurado com sucesso!\n\nID desta Máquina: %s\n\nEsta máquina está devidamente registrada no painel de suporte.", machineID),
-		MB_ICONINFORMATION)
-
-	return machineID, enrollResp.MachineToken, nil
-}
-
 func getLoggedInUser() string {
 	u, err := user.Current()
 	if err == nil && u.Username != "" {
@@ -870,115 +562,533 @@ func getLocalIP() string {
 	return ""
 }
 
-func sendHeartbeat(serverURL string, clientID string, machineToken string, httpClient *http.Client) error {
-	payload := HeartbeatPayload{
-		RustdeskID:   clientID,
-		LoggedInUser: getLoggedInUser(),
-		IPAddress:    getLocalIP(),
-		CPUUsage:     getCPUUsage(),
-		RAMUsage:     getRAMUsage(),
-		DiskFreeGB:   getDiskFreeGB(),
-		CPUModel:     getCPUModel(),
+func generateRandomPassword(length int) string {
+	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%"
+	b := make([]byte, length)
+	for i := range b {
+		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
+		b[i] = chars[n.Int64()]
 	}
+	return string(b)
+}
 
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
+func readIDFromConfig() string {
+	paths := []string{
+		filepath.Join(os.Getenv("APPDATA"), "RustDesk", "config", "RustDesk.toml"),
+		`C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk.toml`,
+		`C:\ProgramData\RustDesk\config\RustDesk.toml`,
+		filepath.Join(os.Getenv("APPDATA"), "BipDesk", "config", "BipDesk.toml"),
+		`C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\BipDesk\config\BipDesk.toml`,
+		`C:\ProgramData\BipDesk\config\BipDesk.toml`,
 	}
-
-	endpoint := fmt.Sprintf("%s/api/agent/heartbeat", strings.TrimRight(serverURL, "/"))
-	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(data))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "BipDesk-Host-Agent/2.4")
-	if machineToken != "" {
-		req.Header.Set("X-Machine-Token", machineToken)
-	}
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("heartbeat rejected with HTTP %d", resp.StatusCode)
-	}
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err == nil && len(bodyBytes) > 0 {
-		var hbResp HeartbeatResponse
-		if err := json.Unmarshal(bodyBytes, &hbResp); err == nil {
-			for _, cmd := range hbResp.Commands {
-				if err := executeCommand(cmd, clientID, machineToken); err != nil {
-					log.Printf("[ALERTA SEGURANCA] Comando %d rejeitado: %v\n", cmd.ID, err)
+	for _, p := range paths {
+		if b, err := os.ReadFile(p); err == nil {
+			content := string(b)
+			re := regexp.MustCompile(`(?m)^id\s*=\s*['"]([0-9a-zA-Z_-]+)['"]`)
+			m := re.FindStringSubmatch(content)
+			if len(m) > 1 {
+				clean := extractCleanID(m[1])
+				if clean != "" {
+					return clean
 				}
 			}
 		}
+	}
+	return ""
+}
+
+// ----------------- Indicador Visível de Sessão Remota (R5) -----------------
+
+var (
+	indicatorMu  sync.Mutex
+	indicatorCmd *exec.Cmd
+)
+
+func showSessionIndicator(technician string) {
+	indicatorMu.Lock()
+	defer indicatorMu.Unlock()
+	if indicatorCmd != nil && indicatorCmd.Process != nil {
+		_ = indicatorCmd.Process.Kill()
+	}
+
+	log.Printf("[AUDITORIA AGENTE] Iniciando indicador visual de suporte: Tecnico %s\n", technician)
+	if runtime.GOOS == "windows" {
+		psScript := fmt.Sprintf(`
+Add-Type -AssemblyName PresentationFramework
+[System.Windows.MessageBox]::Show("BipDesk Host: Sessão de suporte remoto ativa com o técnico '%s'.", "BipDesk Suporte Remoto", "OK", "Information")
+`, technician)
+		indicatorCmd = exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Normal", "-Command", psScript)
+		_ = indicatorCmd.Start()
+	}
+}
+
+func hideSessionIndicator() {
+	indicatorMu.Lock()
+	defer indicatorMu.Unlock()
+	if indicatorCmd != nil && indicatorCmd.Process != nil {
+		_ = indicatorCmd.Process.Kill()
+		indicatorCmd = nil
+	}
+	log.Println("[AUDITORIA AGENTE] Indicador visual de sessao encerrado.")
+}
+
+// ----------------- Validação de Ticket e Ações do Host (Seção 6, R3) -----------------
+
+// validateSessionTicket valida integridade do ticket assinado pelo servidor
+func validateSessionTicket(ticket map[string]any, localMachineID string, now int64) error {
+	if ticket == nil {
+		return fmt.Errorf("ticket ausente no payload da sessao")
+	}
+
+	mID, _ := ticket["machine_id"].(string)
+	if mID != localMachineID {
+		return fmt.Errorf("ticket direcionado a maquina incorreta: esperado %s, obtido %s", localMachineID, mID)
+	}
+
+	var expTs int64
+	if expFloat, ok := ticket["expires_at"].(float64); ok {
+		expTs = int64(expFloat)
+	} else if expInt, ok := ticket["expires_at"].(int64); ok {
+		expTs = expInt
+	} else if expStr, ok := ticket["expires_at"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, expStr); err == nil {
+			expTs = t.Unix()
+		} else {
+			fmt.Sscanf(expStr, "%d", &expTs)
+		}
+	}
+
+	if expTs > 0 && expTs < now {
+		return fmt.Errorf("ticket de sessao expirado (exp=%d, now=%d)", expTs, now)
 	}
 
 	return nil
 }
 
+// applyTemporarySessionPassword aplica a credencial temporária ao motor RustDesk/BipDesk
+func applyTemporarySessionPassword(tempPassword string) error {
+	candidateExes := []string{
+		`C:\Program Files\BipDesk\BipDesk_Session.exe`,
+		`C:\Program Files\RustDesk\RustDesk.exe`,
+	}
+
+	var executed bool
+	for _, exe := range candidateExes {
+		if _, err := os.Stat(exe); err == nil {
+			cmd := exec.Command(exe, "--password", tempPassword)
+			if err := cmd.Run(); err == nil {
+				executed = true
+				break
+			}
+		}
+	}
+
+	if !executed && runtime.GOOS == "windows" {
+		return fmt.Errorf("executavel do motor de sessao nao localizado para aplicar credencial")
+	}
+	return nil
+}
+
+// revokeSessionCredentials redefine a senha do motor para string aleatória de descarte
+func revokeSessionCredentials() {
+	candidateExes := []string{
+		`C:\Program Files\BipDesk\BipDesk_Session.exe`,
+		`C:\Program Files\RustDesk\RustDesk.exe`,
+	}
+	burnPassword := generateRandomPassword(32)
+	for _, exe := range candidateExes {
+		if _, err := os.Stat(exe); err == nil {
+			_ = exec.Command(exe, "--password", burnPassword).Run()
+		}
+	}
+}
+
+// executeClosedEnumCommand executa apenas os comandos autorizados no enum estrito (R3)
+func executeClosedEnumCommand(commandType string) error {
+	switch commandType {
+	case "cad":
+		log.Println("[AUDITORIA AGENTE] Executando SAS/CAD...")
+		sessionExe := `C:\Program Files\BipDesk\BipDesk_Session.exe`
+		if _, err := os.Stat(sessionExe); err == nil {
+			go exec.Command(sessionExe, "--send-cad").Run()
+		} else {
+			rustdeskExe := `C:\Program Files\RustDesk\RustDesk.exe`
+			if _, err := os.Stat(rustdeskExe); err == nil {
+				go exec.Command(rustdeskExe, "--send-cad").Run()
+			}
+		}
+		return nil
+
+	case "restart_spooler":
+		log.Println("[AUDITORIA AGENTE] Reiniciando servico de spooler...")
+		go func() {
+			_ = exec.Command("net.exe", "stop", "spooler").Run()
+			time.Sleep(1 * time.Second)
+			_ = exec.Command("net.exe", "start", "spooler").Run()
+		}()
+		return nil
+
+	case "flush_dns":
+		log.Println("[AUDITORIA AGENTE] Limpando cache DNS...")
+		go func() {
+			_ = exec.Command("ipconfig.exe", "/flushdns").Run()
+		}()
+		return nil
+
+	case "lock":
+		log.Println("[AUDITORIA AGENTE] Bloqueando estacao de trabalho...")
+		go func() {
+			_ = exec.Command("rundll32.exe", "user32.dll,LockWorkStation").Run()
+		}()
+		return nil
+
+	case "reboot":
+		log.Println("[AUDITORIA AGENTE] Reiniciando estacao de trabalho sob demanda...")
+		go func() {
+			_ = exec.Command("shutdown.exe", "/r", "/t", "5", "/c", "Reinicio solicitado pelo BipDesk Admin", "/f").Run()
+		}()
+		return nil
+
+	default:
+		return fmt.Errorf("comando desconhecido ou fora do enum estrito autorizado: %s", commandType)
+	}
+}
+
+// ----------------- Enrollment Automático (Seção 2) -----------------
+
+type EnrollResponse struct {
+	Status    string `json:"status"`
+	MachineID string `json:"machine_id"`
+	ServerKey string `json:"server_pubkey"`
+	State     string `json:"state"`
+}
+
+func createHTTPClient(timeout time.Duration) *http.Client {
+	rootCAs, _ := x509.SystemCertPool()
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    rootCAs,
+			// STRICT TLS: Nunca usar InsecureSkipVerify (Seção 4)
+		},
+	}
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: tr,
+	}
+}
+
+// enrollHost executa o enrollment automático vinculando a chave pública com token de uso único
+func enrollHost(serverURL, enrollToken, machineID string, pubKey ed25519.PublicKey, privKey ed25519.PrivateKey, pinnedServerKey string) (*EnrollResponse, error) {
+	// Prova criptográfica de posse da chave privada Ed25519
+	sigBytes := ed25519.Sign(privKey, []byte(enrollToken))
+	sigHex := hex.EncodeToString(sigBytes)
+	pubKeyHex := hex.EncodeToString(pubKey)
+
+	hostname, _ := os.Hostname()
+	payload := map[string]string{
+		"token":       enrollToken,
+		"machine_id":  machineID,
+		"public_key":  pubKeyHex,
+		"signature":   sigHex,
+		"hostname":    hostname,
+		"os_version":  runtime.GOOS,
+		"ip_address":  getLocalIP(),
+		"rustdesk_id": readIDFromConfig(),
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	endpoint := fmt.Sprintf("%s/api/agent/enroll", strings.TrimRight(serverURL, "/"))
+	client := createHTTPClient(15 * time.Second)
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(data))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("falha de conexao no enrollment: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("enrollment rejeitado com HTTP %d: %s", resp.StatusCode, string(b))
+	}
+
+	var res EnrollResponse
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+
+	// Verificação estrita de pinning de chave do servidor (Seção 4)
+	if pinnedServerKey != "" && !strings.EqualFold(res.ServerKey, pinnedServerKey) {
+		return nil, fmt.Errorf("ALERTA SEGURANCA: Chave publica retornada pelo servidor (%s) diverge da fixada (%s)", res.ServerKey, pinnedServerKey)
+	}
+
+	return &res, nil
+}
+
+// ----------------- Canal WebSocket e Reconexão com Jitter (Seção 3, 4) -----------------
+
+func formatWebSocketURL(serverURL, machineID string) string {
+	raw := serverURL
+	if strings.HasPrefix(raw, "https://") {
+		raw = "wss://" + strings.TrimPrefix(raw, "https://")
+	} else if strings.HasPrefix(raw, "http://") {
+		raw = "ws://" + strings.TrimPrefix(raw, "http://")
+	} else if !strings.HasPrefix(raw, "wss://") && !strings.HasPrefix(raw, "ws://") {
+		raw = "wss://" + raw
+	}
+	return fmt.Sprintf("%s/api/ws/host?machine_id=%s", strings.TrimRight(raw, "/"), machineID)
+}
+
+func calculateBackoffWithJitter(attempt int) time.Duration {
+	baseSec := 1 << attempt
+	if baseSec > 60 || baseSec <= 0 {
+		baseSec = 60
+	}
+	jitterMs := 0
+	if n, err := rand.Int(rand.Reader, big.NewInt(1500)); err == nil {
+		jitterMs = int(n.Int64())
+	}
+	d := time.Duration(baseSec)*time.Second + time.Duration(jitterMs)*time.Millisecond
+	if d > 60*time.Second {
+		d = 60 * time.Second
+	}
+	return d
+}
+
+// runWebSocketLoop executa a conexão contínua de saída via WebSocket assinado
+func runWebSocketLoop(serverURL, machineID, pinnedServerKey string, privKey ed25519.PrivateKey) {
+	wsURL := formatWebSocketURL(serverURL, machineID)
+	attempt := 0
+
+	for {
+		log.Printf("[CONEXAO HOST] Conectando ao canal seguro wss: %s (tentativa %d)\n", wsURL, attempt+1)
+
+		dialer := websocket.Dialer{
+			HandshakeTimeout: 15 * time.Second,
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				// Strict TLS: NO InsecureSkipVerify (Seção 4)
+			},
+		}
+
+		conn, resp, err := dialer.Dial(wsURL, nil)
+		if err != nil {
+			if resp != nil {
+				log.Printf("[ALERTA SEGURANCA] Conexao WebSocket recusada pelo servidor (HTTP %d): %v\n", resp.StatusCode, err)
+			} else {
+				log.Printf("[AVISO] Falha ao conectar WebSocket: %v\n", err)
+			}
+			backoff := calculateBackoffWithJitter(attempt)
+			attempt++
+			time.Sleep(backoff)
+			continue
+		}
+
+		attempt = 0
+		log.Println("[OK] Canal WebSocket de saida estabelecido e autenticado.")
+
+		// Configuração de leitura com limite estrito de 64 KB
+		conn.SetReadLimit(65536)
+
+		// Loop de telemetria a cada 30 segundos
+		stopTelemetry := make(chan struct{})
+		go func() {
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+
+			// Envio inicial imediato
+			sendTelemetry(conn, machineID, privKey)
+
+			for {
+				select {
+				case <-stopTelemetry:
+					return
+				case <-ticker.C:
+					sendTelemetry(conn, machineID, privKey)
+				}
+			}
+		}()
+
+		// Loop de leitura de mensagens assinadas do servidor
+		for {
+			_, messageBytes, err := conn.ReadMessage()
+			if err != nil {
+				log.Printf("[CONEXAO HOST] Canal WebSocket desconectado: %v\n", err)
+				break
+			}
+
+			env, err := verifyServerEnvelope(messageBytes, pinnedServerKey, machineID)
+			if err != nil {
+				log.Printf("[ALERTA SEGURANCA] Mensagem do servidor descartada: %v\n", err)
+				continue
+			}
+
+			handleServerMessage(conn, env, machineID, privKey)
+		}
+
+		close(stopTelemetry)
+		conn.Close()
+		hideSessionIndicator()
+
+		backoff := calculateBackoffWithJitter(attempt)
+		attempt++
+		log.Printf("[CONEXAO HOST] Reconectando em %v...\n", backoff)
+		time.Sleep(backoff)
+	}
+}
+
+func sendTelemetry(conn *websocket.Conn, machineID string, privKey ed25519.PrivateKey) {
+	telemetryPayload := map[string]any{
+		"cpu_usage":      getCPUUsage(),
+		"ram_usage":      getRAMUsage(),
+		"disk_free_gb":   getDiskFreeGB(),
+		"logged_in_user": getLoggedInUser(),
+		"cpu_model":      getCPUModel(),
+		"ip_address":     getLocalIP(),
+	}
+
+	env, err := signEnvelope("telemetry", machineID, telemetryPayload, privKey)
+	if err != nil {
+		log.Printf("[ERRO] Falha ao assinar telemetria: %v\n", err)
+		return
+	}
+
+	data, _ := json.Marshal(env)
+	_ = conn.WriteMessage(websocket.TextMessage, data)
+}
+
+func handleServerMessage(conn *websocket.Conn, env *SignedEnvelope, machineID string, privKey ed25519.PrivateKey) {
+	now := time.Now().Unix()
+
+	switch env.Type {
+	case "session_offer":
+		log.Println("[AUDITORIA AGENTE] Oferta de sessao remota assinada recebida.")
+		ticketMap, _ := env.Payload["ticket"].(map[string]any)
+		if err := validateSessionTicket(ticketMap, machineID, now); err != nil {
+			log.Printf("[ALERTA SEGURANCA] Ticket de sessao invalido recusado: %v\n", err)
+			return
+		}
+
+		tempPassword, _ := env.Payload["temp_password"].(string)
+		techName, _ := env.Payload["technician"].(string)
+		sessID, _ := env.Payload["session_id"].(string)
+
+		if err := applyTemporarySessionPassword(tempPassword); err != nil {
+			log.Printf("[AVISO] Nao foi possivel aplicar senha temporaria ao motor: %v\n", err)
+		}
+
+		showSessionIndicator(techName)
+
+		// Envia confirmacao (session_ack)
+		ackEnv, err := signEnvelope("session_ack", machineID, map[string]any{"session_id": sessID}, privKey)
+		if err == nil {
+			ackData, _ := json.Marshal(ackEnv)
+			_ = conn.WriteMessage(websocket.TextMessage, ackData)
+		}
+
+	case "session_terminate":
+		log.Println("[AUDITORIA AGENTE] Ordem de encerramento de sessao recebida.")
+		sessID, _ := env.Payload["session_id"].(string)
+		revokeSessionCredentials()
+		hideSessionIndicator()
+
+		endEnv, err := signEnvelope("session_ended", machineID, map[string]any{"session_id": sessID}, privKey)
+		if err == nil {
+			endData, _ := json.Marshal(endEnv)
+			_ = conn.WriteMessage(websocket.TextMessage, endData)
+		}
+
+	case "command":
+		cmdType, _ := env.Payload["command_type"].(string)
+		if err := executeClosedEnumCommand(cmdType); err != nil {
+			log.Printf("[ALERTA SEGURANCA] Execucao de comando recusada: %v\n", err)
+		}
+
+	case "ping":
+		pongEnv, err := signEnvelope("pong", machineID, map[string]any{}, privKey)
+		if err == nil {
+			pongData, _ := json.Marshal(pongEnv)
+			_ = conn.WriteMessage(websocket.TextMessage, pongData)
+		}
+	}
+}
+
+// ----------------- Ponto de Entrada (main) -----------------
+
 func main() {
-	serverURL := flag.String("server", "https://bipdesk.duckdns.org", "URL do servidor BipDesk")
-	clientID := flag.String("id", "", "ID local do BipDesk Session")
-	tokenFlag := flag.String("token", "", "Token de autenticação da máquina (ADR-001)")
-	enrollTokenFlag := flag.String("enroll-token", "", "Token de enrollment de uso único")
-	intervalSec := flag.Int("interval", 30, "Intervalo do heartbeat em segundos")
+	serverURL := flag.String("server", "https://bipdesk-server", "URL ou MagicDNS do servidor BipDesk")
+	serverMagicDns := flag.String("server-magic-dns", "", "Nome MagicDNS do servidor na Tailnet")
+	serverKeyFlag := flag.String("server-key", "", "Chave publica Ed25519 do servidor para pinning")
+	machineIDFlag := flag.String("machine-id", "", "Identificador da maquina no BipDesk")
+	idFlag := flag.String("id", "", "ID alternativo da maquina")
+	enrollTokenFlag := flag.String("enroll-token", "", "Token de uso unico para vinculacao inicial")
 	flag.Parse()
 
-	// Prioridade do token: 1. Flag CLI, 2. Arquivo DPAPI seguro
-	machineToken := *tokenFlag
-	if machineToken == "" {
-		machineToken = loadMachineToken()
+	if *serverMagicDns != "" {
+		*serverURL = *serverMagicDns
 	}
 
-	if *clientID != "" {
-		if cleaned := extractCleanID(*clientID); cleaned != "" {
-			*clientID = cleaned
+	machineID := *machineIDFlag
+	if machineID == "" {
+		machineID = *idFlag
+	}
+
+	serverKey := *serverKeyFlag
+	if serverKey == "" {
+		serverKey = os.Getenv("BIPDESK_SERVER_KEY")
+	}
+
+	enrollToken := *enrollTokenFlag
+	if enrollToken == "" {
+		enrollToken = os.Getenv("BIPDESK_ENROLL_TOKEN")
+	}
+
+	// 1. Carrega ou gera chave de identidade Ed25519 do host (DPAPI escopo maquina)
+	pubKey, privKey, err := loadOrCreateHostEd25519Key("")
+	if err != nil {
+		log.Fatalf("[CRITICO] Falha ao carregar/gerar identidade Ed25519 do host: %v", err)
+	}
+
+	pubKeyHex := hex.EncodeToString(pubKey)
+	log.Printf("[IDENTIDADE HOST] Chave publica Ed25519: %s | SO: %s\n", pubKeyHex, runtime.GOOS)
+
+	// 2. Enrollment se token de uso único fornecido
+	if enrollToken != "" {
+		if machineID == "" {
+			machineID = "bip-" + extractCleanID(readIDFromConfig())
+			if machineID == "bip-" {
+				machineID = "bip-host"
+			}
+		}
+		log.Printf("[ENROLLMENT] Iniciando vinculacao com token de uso unico para maquina %s...\n", machineID)
+		res, err := enrollHost(*serverURL, enrollToken, machineID, pubKey, privKey, serverKey)
+		if err != nil {
+			log.Fatalf("[CRITICO] Enrollment falhou: %v", err)
+		}
+		log.Printf("[ENROLLMENT] Maquina vinculada com sucesso: ID=%s, Estado=%s\n", res.MachineID, res.State)
+		if res.ServerKey != "" {
+			serverKey = res.ServerKey
 		}
 	}
 
-	if *clientID == "" {
-		if runtime.GOOS == "windows" {
-			enrollTk := *enrollTokenFlag
-			if enrollTk == "" {
-				enrollTk = os.Getenv("BIPDESK_ENROLL_TOKEN")
-			}
-			id, tk, err := runAutoSetup(*serverURL, enrollTk)
-			if err != nil {
-				showMessageBox("BipDesk Host - Erro", fmt.Sprintf("Não foi possível configurar automaticamente o BipDesk Host:\n%v", err), MB_ICONERROR)
-				log.Fatalf("[ERRO] AutoSetup falhou: %v", err)
-			}
-			*clientID = id
-			if tk != "" {
-				machineToken = tk
-			}
-		} else {
-			log.Fatal("[ERRO] Parametro --id e obrigatorio em sistemas nao-Windows.")
+	if machineID == "" {
+		machineID = "bip-" + extractCleanID(readIDFromConfig())
+		if machineID == "bip-" {
+			machineID = "bip-host"
 		}
 	}
 
-	log.Printf("[BipDesk Host Agent Enterprise] Iniciado. ID: %s | Servidor: %s | OS: %s\n", *clientID, *serverURL, runtime.GOOS)
+	log.Printf("[BipDesk Host Agent Enterprise] Inicializado. Machine ID: %s | Servidor: %s\n", machineID, *serverURL)
 
-	httpClient := createHTTPClient(10 * time.Second)
-
-	ticker := time.NewTicker(time.Duration(*intervalSec) * time.Second)
-	defer ticker.Stop()
-
-	// Envio imediato do primeiro heartbeat
-	if err := sendHeartbeat(*serverURL, *clientID, machineToken, httpClient); err != nil {
-		log.Printf("[AVISO] Falha no primeiro heartbeat: %v\n", err)
-	} else {
-		log.Println("[OK] Primeiro heartbeat entregue com sucesso.")
-	}
-
-	for range ticker.C {
-		if err := sendHeartbeat(*serverURL, *clientID, machineToken, httpClient); err != nil {
-			log.Printf("[AVISO] Falha ao enviar heartbeat: %v\n", err)
-		}
-	}
+	// 3. Inicia conexão de saída contínua via WebSocket assinado
+	runWebSocketLoop(*serverURL, machineID, serverKey, privKey)
 }

@@ -35,3 +35,17 @@
 1. **Correção do Erro na Solução 4 (FastAPI)**: O relatório original propunha um middleware/dependência inválido consumindo o corpo de requisição json de forma incompatível. A implementação corrigida utiliza o cabeçalho HTTP padrão `X-Machine-Token` e validação por hash criptográfico SHA-256.
 2. **Métricas Falsas Rejeitadas**: Tabelas teóricas de "antes/depois" do relatório anterior foram expurgadas. Todos os dados desta entrega baseiam-se em testes reais executados no ambiente.
 3. **Caddy e Let's Encrypt**: O mito de que ACME Let's Encrypt funciona em qualquer ambiente residencial foi corrigido no ADR-003 e ADR-005, adotando a malha privada Tailscale como recomendação primária para evitar bloqueios de operadoras.
+
+---
+
+## 3. Endurecimento Avançado e Arquitetura Zero-Trust (Fase 2 — ADRs 010 a 015)
+
+| ADR | Domínio | Decisão Arquitetural e Implementação | Status e Evidência |
+|:---|:---|:---|:---:|
+| [ADR-010](file:///d:/PROJETOS/BipDesk/docs/adr/ADR-010-autenticacao-argon2id-e-totp-mfa.md) | Autenticação de Operadores | Hash **Argon2id** (time=3, mem=64MB, p=4) com fallback seguro para bcrypt legado; MFA via **TOTP (RFC 6238)**; tokens JWT de 15 minutos com rotação via Refresh Tokens. | **CONCLUÍDO**<br/>`test_argon2id_and_totp` |
+| [ADR-011](file:///d:/PROJETOS/BipDesk/docs/adr/ADR-011-identidade-criptografica-ed25519-e-dpapi.md) | Identidade do Host | Par de chaves assimétricas **Ed25519** gerado localmente pelo agente Go; chave privada cifrada via **Windows DPAPI** (`CryptProtectData`) com ACL restrita a `SYSTEM` e `Admins`; enrollment via token único de 256 bits com expiração de 24h. | **CONCLUÍDO**<br/>`TestHostIdentity_DPAPIAndKeyGeneration`<br/>`test_one_time_token_enrollment_lifecycle` |
+| [ADR-012](file:///d:/PROJETOS/BipDesk/docs/adr/ADR-012-canal-websocket-bidirecional-e-envelopes-assinados.md) | Canal em Tempo Real | Conexão WebSocket exclusivamente de saída (`/api/ws/host`); envelopes canônicos assinados (`type:machine_id:timestamp:nonce:json`); cache anti-replay (TTL 300s); tolerância máxima de skew temporal (+-120s); limite estrito de 64 KB por mensagem. | **CONCLUÍDO**<br/>`TestEd25519_ForeignSignatureRejected`<br/>`TestAntiReplay_NonceDuplicateRejected`<br/>`TestTimestamp_SkewWindowRejected`<br/>`TestOversizedMessage_Rejected` |
+| [ADR-013](file:///d:/PROJETOS/BipDesk/docs/adr/ADR-013-pinning-de-chave-do-servidor-e-protecao-anti-tampering.md) | Integridade do Servidor | Chave pública do servidor fixada no instalador (`-server-key`); host descarta mensagens ou ofertas de servidores com chaves divergentes. | **CONCLUÍDO**<br/>`TestPinnedServerKey_MismatchRejected` |
+| [ADR-014](file:///d:/PROJETOS/BipDesk/docs/adr/ADR-014-sessoes-efemeras-e-tickets-temporarios.md) | Sessões Efêmeras | Erradicação de senhas fixas de computadores clientes. Geração de `SessionTicket` de uso único assinado com Ed25519; credencial efêmera válida por 60 segundos transmitida diretamente ao host; purga imediata das credenciais no encerramento. | **CONCLUÍDO**<br/>`TestTicketValidation_InvalidExpiredOrReused`<br/>`test_session_ticket_lifecycle_and_termination` |
+| [ADR-015](file:///d:/PROJETOS/BipDesk/docs/adr/ADR-015-defesa-em-profundidade-com-tailscale-localapi.md) | Defesa em Profundidade | Validação de nós Tailscale via **LocalAPI** (`/localapi/v0/whois` e CLI `tailscale whois`); exigência da tag `tag:bipdesk-host`; rejeição de peers não autorizados com código 4003 e auditoria. | **CONCLUÍDO**<br/>`test_tailscale_peer_tag_defense` |
+

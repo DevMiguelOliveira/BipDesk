@@ -74,6 +74,7 @@ $RECYCLE.BIN/
 *.bak
 
 # Tooling, Scratch and Temporary experiments
+.dual-agent/
 .vercel/
 .jj/
 .kilo/
