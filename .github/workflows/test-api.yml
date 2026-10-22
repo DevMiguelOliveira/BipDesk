@@ -1,0 +1,43 @@
+name: Test BipDesk API
+
+on:
+  push:
+    paths:
+      - 'api/**'
+      - '.github/workflows/test-api.yml'
+  pull_request:
+    paths:
+      - 'api/**'
+      - '.github/workflows/test-api.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'api/requirements.txt'
+
+      - name: Install Dependencies
+        working-directory: ./api
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run Pytest Suite
+        working-directory: ./api
+        env:
+          ENV: development
+          SECRET_KEY: test_ci_secret_key_1234567890123456789
+          ADMIN_PASSWORD: AdminStrongP@ss2026!
+        run: |
+          pytest -v

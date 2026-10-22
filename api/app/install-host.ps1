@@ -359,8 +359,13 @@ Write-Host ">> Registrando BipDesk Agent para inicialização automática no boo
 $TaskName = "BipDeskHostAgent"
 
 try {
+    # Monta argumentos com suporte a Ed25519, server-key pinning e canal WebSocket seguro
+    $agentArgs = "--server `"$ServerUrl`" --id `"$MachineId`""
+    if ($ServerKey) { $agentArgs += " --server-key `"$ServerKey`"" }
+    if ($EnrollToken) { $agentArgs += " --token `"$EnrollToken`"" }
+
     # Cria tarefa agendada no boot com privilégios SYSTEM
-    $Action = New-ScheduledTaskAction -Execute $AgentExe -Argument "--server `"$ServerUrl`" --id `"$MachineId`""
+    $Action = New-ScheduledTaskAction -Execute $AgentExe -Argument $agentArgs
     $Trigger = New-ScheduledTaskTrigger -AtStartup
     $Principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
     $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)

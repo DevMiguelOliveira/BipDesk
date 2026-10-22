@@ -49,3 +49,23 @@
 | [ADR-014](file:///d:/PROJETOS/BipDesk/docs/adr/ADR-014-sessoes-efemeras-e-tickets-temporarios.md) | Sessões Efêmeras | Erradicação de senhas fixas de computadores clientes. Geração de `SessionTicket` de uso único assinado com Ed25519; credencial efêmera válida por 60 segundos transmitida diretamente ao host; purga imediata das credenciais no encerramento. | **CONCLUÍDO**<br/>`TestTicketValidation_InvalidExpiredOrReused`<br/>`test_session_ticket_lifecycle_and_termination` |
 | [ADR-015](file:///d:/PROJETOS/BipDesk/docs/adr/ADR-015-defesa-em-profundidade-com-tailscale-localapi.md) | Defesa em Profundidade | Validação de nós Tailscale via **LocalAPI** (`/localapi/v0/whois` e CLI `tailscale whois`); exigência da tag `tag:bipdesk-host`; rejeição de peers não autorizados com código 4003 e auditoria. | **CONCLUÍDO**<br/>`test_tailscale_peer_tag_defense` |
 
+---
+
+## 4. Homologação Completa e Pipeline de Integração Contínua (CI/CD)
+
+- **Suíte de Testes Python (`api/tests/`)**:
+  - `tests/test_ed25519_and_channel.py`: 9 testes (Argon2id, TOTP, envelopes canônicos, anti-replay, tolerância de skew temporal, enrollment de 256 bits, canal WebSocket autenticado, proteção contra payloads acima de 64 KB, defesa por tags Tailscale e ciclo de vida de tickets de sessão).
+  - `tests/test_security_and_api.py`: 11 testes (fail-fast de SECRET_KEY em produção, rotação de chaves MultiFernet, JWT HS256 estrito, sanitização e regex de IDs RustDesk, enum estrito de comandos remotos, obrigatoriedade de X-Machine-Token, rate limiting SlowAPI, CRUD de técnicos, listagem de grupos, tickets de conexão, notas e endpoints de compatibilidade RustDesk).
+  - **Resultado**: **20 testes executados — 20 aprovados (100% de sucesso)**.
+- **Suíte de Testes Go (`agent/agent_test.go`)**:
+  - 9 testes unitários: proteção de chave via Windows DPAPI, descarte de assinaturas estrangeiras, descarte de nonces repetidos, descarte de mensagens fora da janela temporal, integridade e pinning de chave do servidor, recusa de mensagens > 64 KB, ciclo de vida e expiração de tickets temporários, rejeição estrita fora do enum fechado de comandos e extração de ID limpo.
+  - **Resultado**: **9 testes executados — 9 aprovados (100% de sucesso)**.
+- **Compilação de Binários**:
+  - Binário `agent/bipdesk-agent.exe` compilado com `-ldflags "-s -w -H=windowsgui"` sem avisos.
+- **Automação de CI/CD GitHub Actions**:
+  - `.github/workflows/build-agent.yml`: Compilação e hash SHA-256 do agente Go com pinned actions.
+  - `.github/workflows/build-tech-app.yml`: Build do console WPF com pinned actions.
+  - `.github/workflows/build-session.yml`: Empacotamento do motor RustDesk com pinned actions.
+  - `.github/workflows/test-api.yml`: Execução contínua da suíte Pytest com pinned actions no GitHub Actions.
+
+
