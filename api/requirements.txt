@@ -9,5 +9,5 @@ python-multipart==0.0.20
 slowapi==0.1.8
 python-dotenv==1.0.0
 psycopg2-binary>=2.9.9
-argon2-cffi>=23.1.0
+argon2-cffi>=25.1.0
 pyotp>=2.9.0
